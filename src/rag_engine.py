@@ -1,68 +1,79 @@
 """
 Módulo de Mecanismo de RAG (Retrieval-Augmented Generation)
 ------------------------------------------------------------
-Este script é responsável pelo pipeline completo de RAG:
-1. Carregamento dos documentos (PDFs de regras/lore).
-2. Divisão do texto em fragmentos (Chunking).
-3. Vetorização do texto via modelo de Embeddings.
-4. Persistência e busca por similaridade semântica no Banco Vetorial (ChromaDB).
+Este script gerencia todo o pipeline de RAG para o assistente de RPG:
+1. Carregamento dos livros e documentos de regras/lore (PDFs e Markdown).
+2. Divisão inteligente do texto em fragmentos (Chunking).
+3. Geração de vetores através de Embeddings (HuggingFace).
+4. Persistência e busca semântica em Banco Vetorial local (ChromaDB).
+5. Construção de Prompts estruturados para os Casos de Uso UC01, UC02 e UC03.
 
 Autor: Projeto RPG AI Assistant
 Data: 2026
 """
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-# Importações da comunidade e do ecossistema LangChain
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, DirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+import ollama
 
-# Importação das configurações globais do projeto
-from src.config import (
-    RULEBOOKS_DIR,
-    VECTORDB_DIR,
-    CHUNK_SIZE,
-    CHUNK_OVERLAP,
-    EMBEDDING_MODEL_NAME,
-    TOP_K_RESULTS
-)
+# Configurações globais ou caminhos padrão caso o arquivo src/config.py não esteja isolado
+RULEBOOKS_DIR = "data/rulebooks"
+VECTORDB_DIR = "data/vectordb"
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+TOP_K_RESULTS = 4
+OLLAMA_MODEL = "llama3"  # Ou outro modelo configurado no seu Ollama local
 
 
 def get_embeddings() -> HuggingFaceEmbeddings:
     """
-    Inicializa e retorna o modelo de Embeddings do HuggingFace configurado para rodar na GPU (CUDA).
+    Inicializa e retorna o modelo de Embeddings do HuggingFace.
+    Utiliza CPU ou GPU dependendo da disponibilidade do ambiente.
     """
     return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL_NAME,
-        model_kwargs={'device': 'cuda'},  # Força o uso da GPU para processamento mais rápido
+        model_kwargs={'device': 'cpu'},  # Altere para 'cuda' se possuir placa NVIDIA configurada
         encode_kwargs={'normalize_embeddings': True}
-    )
     )
 
 
 def build_vector_store() -> Optional[Chroma]:
     """
-    Processa os livros (PDF ou Markdown) da pasta de dados e cria a base vetorial.
+    Processa os livros (PDF e Markdown) da pasta de dados e cria a base vetorial.
     """
-    print(f"📄 [RAG Engine] Lendo livros (PDF/MD) no diretório: {RULEBOOKS_DIR}...")
+    print(f"📄 [RAG Engine] Lendo documentos em: {RULEBOOKS_DIR}...")
     
-    # Carrega arquivos .pdf
-    pdf_loader = DirectoryLoader(RULEBOOKS_DIR, glob="./*.pdf", loader_cls=PyPDFLoader)
-    # Carrega arquivos .md (Markdown)
-    md_loader = DirectoryLoader(RULEBOOKS_DIR, glob="./*.md", loader_cls=TextLoader)
-    
-    documents: List[Document] = pdf_loader.load() + md_loader.load()
-
-    if not documents:
-        print("⚠️ [RAG Engine] Nenhum arquivo PDF ou Markdown encontrado na pasta data/rulebooks/.")
+    if not os.path.exists(RULEBOOKS_DIR):
+        os.makedirs(RULEBOOKS_DIR, exist_ok=True)
+        print(f"⚠️ Diretório {RULEBOOKS_DIR} criado. Adicione os livros em PDF ou Markdown nele.")
         return None
 
-    print(f"✂️ [RAG Engine] Dividindo {len(documents)} documento(s) em chunks de texto...")
+    pdf_loader = DirectoryLoader(RULEBOOKS_DIR, glob="./*.pdf", loader_cls=PyPDFLoader)
+    md_loader = DirectoryLoader(RULEBOOKS_DIR, glob="./*.md", loader_cls=TextLoader)
     
+    documents: List[Document] = []
+    try:
+        documents.extend(pdf_loader.load())
+    except Exception as e:
+        print(f"ℹ️ Nenhum PDF carregado ou erro menor: {e}")
+        
+    try:
+        documents.extend(md_loader.load())
+    except Exception as e:
+        print(f"ℹ️ Nenhum Markdown carregado ou erro menor: {e}")
+
+    if not documents:
+        print("⚠️ [RAG Engine] Nenhum arquivo PDF ou Markdown encontrado na pasta de regras.")
+        return None
+
+    print(f"✂️ [RAG Engine] Dividindo {len(documents)} documento(s) em chunks...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
@@ -70,9 +81,9 @@ def build_vector_store() -> Optional[Chroma]:
     )
     
     chunks: List[Document] = text_splitter.split_documents(documents)
-    print(f"🧩 [RAG Engine] Total de chunks gerados para indexação: {len(chunks)}")
+    print(f"🧩 [RAG Engine] Total de chunks gerados: {len(chunks)}")
 
-    print("💾 [RAG Engine] Gerando vetores (Embeddings) e salvando no ChromaDB local...")
+    print("💾 [RAG Engine] Gerando embeddings e persistindo no ChromaDB...")
     embeddings = get_embeddings()
     
     vector_store = Chroma.from_documents(
@@ -81,90 +92,119 @@ def build_vector_store() -> Optional[Chroma]:
         persist_directory=VECTORDB_DIR
     )
     
-    print("✅ [RAG Engine] Banco Vetorial construído e armazenado com sucesso!")
+    print("✅ [RAG Engine] Banco Vetorial construído com sucesso!")
     return vector_store
 
 
 def load_vector_store() -> Optional[Chroma]:
     """
     Carrega a base vetorial já existente e persistida no disco.
-
-    Garante reuso rápido sem precisar processar novamente os PDFs toda vez
-    que o sistema for iniciado.
-
-    Returns:
-        Optional[Chroma]: Instância do banco vetorial carregada ou None se não existir.
     """
     embeddings = get_embeddings()
-    
-    # Verifica se a pasta existe e não está vazia
     if os.path.exists(VECTORDB_DIR) and os.listdir(VECTORDB_DIR):
         return Chroma(
             persist_directory=VECTORDB_DIR,
             embedding_function=embeddings
         )
-    
     return None
 
 
-def search_rules(query: str, k: int = TOP_K_RESULTS) -> str:
+def recuperar_contexto(query: str, k: int = TOP_K_RESULTS) -> Tuple[str, str]:
     """
-    Realiza a busca por similaridade semântica no banco vetorial.
-
-    Dada uma consulta em linguagem natural do usuário (ex: 'Como funciona o descanso longo?'),
-    esta função encontra os 'k' fragmentos de texto mais próximos/relevantes no espaço vetorial.
-
-    Args:
-        query (str): Pergunta ou termos de busca fornecidos pelo usuário.
-        k (int, optional): Número de fragmentos mais relevantes a retornar. Padrão: TOP_K_RESULTS.
-
-    Returns:
-        str: Bloco de texto formatado contendo os trechos resgatados e suas respectivas fontes/páginas,
-             pronto para ser injetado no System Prompt da LLM.
+    Busca por similaridade semântica os trechos mais relevantes e extrai as fontes.
     """
     db = load_vector_store()
-    
-    # Caso a base ainda não tenha sido criada pelo usuário
     if not db:
-        return "⚠️ O Banco Vetorial ainda não foi inicializado ou está vazio. Execute a criação da base primeiro."
+        return "⚠️ Banco vetorial não inicializado.", "Nenhuma fonte"
 
-    # Executa a busca por proximidade vetorial (Similarity Search)
     results: List[Document] = db.similarity_search(query, k=k)
-    
     if not results:
-        return "Nenhum trecho de regra relevante foi encontrado para esta consulta."
+        return "Nenhum trecho relevante encontrado.", "Desconhecido"
 
-    # Formata cada fragmento com seus metadados (nome do arquivo e número da página)
     context_chunks = []
+    fontes_encontradas = set()
+
     for doc in results:
-        source_file = os.path.basename(doc.metadata.get('source', 'Livro Desconhecido'))
-        page = doc.metadata.get('page', 0) + 1  # O PyPDF converte página 1 para índice 0, então ajustamos (+1)
+        source_file = os.path.basename(doc.metadata.get('source', 'Livro Oficial'))
+        page = doc.metadata.get('page', 0)
+        page_str = f" - Pág. {page + 1}" if page else ""
         
-        chunk_text = (
-            f"📖 [Fonte: {source_file} - Pág. {page}]\n"
-            f"{doc.page_content.strip()}"
-        )
+        fontes_encontradas.add(f"{source_file}{page_str}")
+        
+        chunk_text = f"📖 [Fonte: {source_file}{page_str}]\n{doc.page_content.strip()}"
         context_chunks.append(chunk_text)
 
-    # Junta todos os chunks recuperados com um separador legível
-    return "\n\n---\n\n".join(context_chunks)
+    texto_contexto = "\n\n---\n\n".join(context_chunks)
+    str_fontes = ", ".join(fontes_encontradas)
+    
+    return texto_contexto, str_fontes
 
 
-if __name__ == "__main__":
+def consultar_rag(query: str, tipo: str = "regras") -> Tuple[str, str, str]:
     """
-    Bloco de teste direto do arquivo.
-    Permite rodar 'python src/rag_engine.py' no terminal para criar/testar o banco vetorial.
+    Executa o pipeline completo de RAG de acordo com o caso de uso escolhido:
+    - 'regras' -> UC01: Consultar Regras ou Mecânicas
+    - 'lore'   -> UC02: Consultar Lore e Ambientação
+    - 'criacao'-> UC03: Gerar Conteúdo Auxiliar para Mestre
     """
-    print("🚀 === Iniciando Teste de Execução do RAG Engine ===")
-    
-    # 1. Tenta construir ou atualizar o banco vetorial a partir dos PDFs
-    build_vector_store()
-    
-    # 2. Teste rápido de busca semântica
-    pergunta_teste = "Como funciona o teste de resistência?"
-    print(f"\n🔍 Testando busca para a pergunta: '{pergunta_teste}'\n")
-    
-    resultado_busca = search_rules(pergunta_teste, k=2)
-    print("--- Resultado do Contexto Recuperado ---")
-    print(resultado_busca)
-    print("---------------------------------------")
+    # 1. Recupera o contexto do Banco Vetorial
+    contexto, fontes = recuperar_contexto(query, k=TOP_K_RESULTS)
+
+    # 2. Define o System Prompt específico com base no Caso de Uso
+    if tipo == "regras":
+        system_prompt = f"""Você é um tutor especialista nas regras oficiais do sistema de RPG consultado.
+Responda à pergunta do usuário utilizando estritamente os trechos de livros fornecidos abaixo no bloco <contexto>.
+Regras:
+- Se a informação não estiver no contexto fornecido, diga claramente: "Não encontrei essa informação nos livros cadastrados."
+- Seja direto e objetivo na explicação da regra.
+- Sempre cite no final de qual livro ou trecho a regra foi retirada.
+
+<contexto>
+{contexto}
+</contexto>"""
+
+    elif tipo == "lore":
+        system_prompt = f"""Você é um historiador e arquivista lendário especialista no universo e na história (lore) do cenário de RPG.
+Responda à pergunta do usuário sobre a história, geografia ou lendas do mundo utilizando exclusivamente os fatos presentes no bloco <lore_contexto>.
+Regras:
+- Adote um tom respeitoso, imersivo e informativo (de um sábio/arquivista).
+- Se a informação não estiver presente no contexto, diga: "Não há registros sobre este assunto nos tomos e livros carregados."
+
+<lore_contexto>
+{contexto}
+</lore_contexto>"""
+
+    elif tipo == "criacao":
+        system_prompt = f"""Você é um co-criador e assistente criativo de Mestres de RPG, especialista em criar conteúdos originais balanceados e imersivos.
+Crie o conteúdo solicitado pelo usuário utilizando as regras de balanceamento e mecânicas presentes no bloco <regras_referencia>.
+Regras:
+- O conteúdo gerado deve respeitar o nível de poder (CR ou Nível) indicado pelo usuário.
+- Formate a saída de forma limpa, dividindo entre História/Personalidade e Estatísticas/Mecânicas.
+
+<regras_referencia>
+{contexto}
+</regras_referencia>"""
+
+    else:
+        system_prompt = f"Responda à pergunta com base no contexto:\n{contexto}"
+
+    # 3. Executa a chamada à LLM local via Ollama
+    try:
+        response = ollama.chat(
+            model=OLLAMA_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query}
+            ]
+        )
+        resposta_llm = response['message']['content']
+        
+        # Simula ou extrai métricas básicas se disponíveis
+        prompt_tokens = response.get('prompt_eval_count', 0)
+        completion_tokens = response.get('eval_count', 0)
+        metricas = f"Prompt Tokens: {prompt_tokens} | Completion Tokens: {completion_tokens}"
+        
+        return resposta_llm, fontes, metricas
+
+    except Exception as e:
+        return f"Erro ao comunicar com o Ollama local: {e}. Verifique se o serviço do Ollama está rodando.", "N/A", "N/A"
