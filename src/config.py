@@ -8,7 +8,7 @@ VECTORDB_DIR = os.path.join(BASE_DIR, "data", "vectordb")
 # Parâmetros de Processamento do RAG
 CHUNK_SIZE = 600          # Tamanho de cada pedaço de texto em caracteres
 CHUNK_OVERLAP = 100       # Sobreposição entre chunks para não perder contexto
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K_RESULTS = 3         # Quantidade de trechos retornados por busca
 
 # Garante que as pastas existam
