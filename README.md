@@ -76,7 +76,9 @@ Modelo Llama 3 baixado no Ollama:
     pip install -r requirements.txt
 
 3. Organizar os Manuais de Regras
+
 Coloque seus arquivos .pdf ou .md organizados dentro do diretório data/rulebooks/ (ex: data/rulebooks/core/ e data/rulebooks/suplements/).
+
 4. Indexar o Banco Vetorial
 
 Execute o script para processar os manuais de forma recursiva e criar o banco vetorial local:
