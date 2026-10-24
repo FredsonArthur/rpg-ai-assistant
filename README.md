@@ -1,99 +1,96 @@
 # 🎲 RPG Tabletop AI Assistant (D&D 5e - Edições 2024/2025)
 
-> **Projeto Acadêmico / Estudo de Engenharia de Software e IA**  
-> Um assistente inteligente e unificado para RPGs de mesa, construído com arquitetura *offline-first*, RAG (Retrieval-Augmented Generation) e modelos locais de IA.
+> Um assistente de IA inteligente, modular e 100% privado (*offline-first*) desenvolvido para apoiar Mestres (DMs) e Jogadores em sessões de *Dungeons & Dragons 5e*.
 
 ---
 
-## 📌 Sobre o Projeto
+## 🎯 Para que serve este projeto?
+Jogar RPG de mesa exige consultar dezenas de manuais, gerir combates complexos e interpretar regras rapidamente. Este assistente resolve isso ao dividir-se em **três módulos especializados** acessíveis numa interface gráfica simples:
 
-Este projeto foi desenvolvido no contexto acadêmico com o objetivo de projetar e implementar um assistente de IA robusto voltado para Jogadores e Mestres (Dungeon Masters) de *Dungeons & Dragons 5e*. 
+1. 🧙‍♂️ **Módulo 1: Tutor, Regras e Lore (RAG)**
+   - **O que faz:** Responde a qualquer dúvida sobre regras oficiais (Edições Core 2024/2025), explica condições, magias e contextualiza a história de mundos e facções.
+   - **Diferencial:** Traduz os termos mecânicos mantendo a referência original em inglês (ex: *Condição Agarrado [Grappled]*) e indica as fontes exatas dos manuais. Também cria NPCs, encontros e itens mágicos sob demanda.
 
-A aplicação prioriza a **privacidade, modularidade e independência de conexão**, operando inteiramente de forma local (*offline-first*) através do Ollama (Llama 3) e busca vetorial semântica (ChromaDB), garantindo respostas precisas e em Português do Brasil baseadas nos manuais oficiais de regras e suplementos.
+2. 🗺️ **Módulo 2: Simulador Mestre (Dungeon Master)**
+   - **O que faz:** Assume o papel de Mestre de Jogo numa aventura solo (*One-on-One*). 
+   - **Diferencial:** Constrói ambientes imersivos, controla monstros segundo as regras oficiais, exige testes de atributos com Classes de Dificuldade (CD) adequadas e **nunca** toma decisões pelo jogador.
+
+3. ⚔️ **Módulo 3: Simulador Jogador (AI PC)**
+   - **O que faz:** Atua como um colega de mesa genuíno (Personagem Controlado por IA).
+   - **Diferencial:** Responde de forma imersiva (*in-character*) aos cenários propostos, interpretando a personalidade, a classe e o alinhamento definidos na ficha do personagem.
 
 ---
 
-## 🏗️ Arquitetura Unificada
-
-O sistema utiliza uma **interface de chat unificada** capaz de identificar e responder de forma fluida a três grandes pilares de suporte ao jogo:
-
-1. 🧙‍♂️ **Tutor de Regras:** Explica mecânicas, testes de resistência, condições e magias com termos oficiais em português seguidos do original em inglês (`[English Terms]`).
-2. 📖 **Arquivista de Lore:** Consulta detalhes de cenários, monstros, deuses, facções e panteões do multiverso de D&D.
-3. ⚔️ **Mestre Copiloto (Geração de Conteúdo):** Cria encontros, fichas simplificadas de NPCs, itens mágicos e ganchos de aventura formatados para leitura rápida em mesa.
+## ⚙️ Como funciona por trás dos panos?
+A aplicação foi construída com foco em **privacidade e autonomia**, rodando inteiramente na tua máquina sem depender de APIs pagas ou internet:
+* **LLM Local (Ollama / Llama 3):** Processa todas as respostas e diálogos de forma local. O próprio sistema verifica e inicia o servidor do Ollama automaticamente ao arrancar.
+* **RAG (Retrieval-Augmented Generation):** Utiliza busca semântica vetorial (**ChromaDB**) sobre os manuais em PDF/Markdown armazenados localmente, garantindo que a IA baseie as respostas nas regras oficiais e não em alucinações.
+* **Interface Gráfica (Streamlit):** Oferece um painel web moderno com histórico de conversas isolado por módulo.
 
 ---
 
 ## 🛠️ Stack Tecnológica
-
 * **Linguagem:** Python 3.10+
-* **Interface Gráfica:** Streamlit
-* **Orquestração de IA & RAG:** LangChain
-* **Banco de Dados Vetorial:** ChromaDB
-* **Modelo LLM Local:** Ollama (`llama3`)
-* **Embeddings Multilíngues:** HuggingFace (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`)
-* **Processamento:** Otimizado para execução local em CPU/GPU
+* **Interface:** Streamlit
+* **IA & RAG:** LangChain & ChromaDB
+* **Modelo Local:** Ollama (`llama3`)
+* **Embeddings:** HuggingFace (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`)
 
 ---
 
-## 📁 Estrutura do Repositório
+## 🚀 Como Executar na Própria Máquina
 
-```
-rpg-ai-assistant/
-├── data/
-│   ├── rulebooks/       # Acervo de manuais organizados em subpastas (.md / .pdf)
-│   │   ├── core/        # Livros básicos (Player's Handbook, Monster Manual, DMG)
-│   │   └── suplements/  # Suplementos (Tasha's, Xanathar's, Fizban's, etc.)
-│   └── vectordb/        # Banco de dados vetorial persistido (ChromaDB - ignorado no Git)
-├── src/
-│   ├── config.py        # Configurações globais (Chunking, Top-K, Modelos, Diretórios)
-│   ├── rag_engine.py    # Pipeline de busca recursiva, embeddings e integração com Ollama
-│   └── prompt_templates.py # Central com o SYSTEM_PROMPT unificado do assistente
-├── app.py               # Interface de chat moderna construída em Streamlit
-├── requirements.txt     # Dependências do projeto
-└── README.md            # Documentação oficial do repositório
-```
-## 🚀 Como Executar o Projeto Localmente
+Siga os passos abaixo para configurar e rodar o projeto no seu computador:
 
-1. Pré-requisitos
+### 1. Pré-requisitos
+Certifique-se de ter instalado:
+* **Python** (versão 3.10 ou superior)
+* **Ollama** ([Descarregar em ollama.com](https://ollama.com))
 
-    Python 3.10+ instalado.
-
-Ollama baixado e instalado (ollama.com).
-Modelo Llama 3 baixado no Ollama:
+Com o Ollama instalado, descarregue o modelo Llama 3 executando no seu terminal:
 
     ollama pull llama3
+2. Clonar o Repositório e Instalar Dependências
 
-2. Clonar o repositório e configurar o ambiente
+Abra o terminal na pasta onde deseja guardar o projeto:
+Bash
 
-    git clone [https://github.com/FredsonArthur/rpg-ai-assistant.git](https://github.com/FredsonArthur/rpg-ai-assistant.git)
-    cd rpg-ai-assistant
+git clone [https://github.com/FredsonArthur/rpg-ai-assistant.git](https://github.com/FredsonArthur/rpg-ai-assistant.git)
+cd rpg-ai-assistant
 
 # Criar e ativar o ambiente virtual
     python -m venv venv
-    source venv/bin/activate  # No Windows: venv\Scripts\activate
+    source venv/bin/activate 
+    No Windows: venv\Scripts\activate
 
-# Instalar as dependências
+# Instalar as bibliotecas necessárias
     pip install -r requirements.txt
 
-3. Organizar os Manuais de Regras
+3. Adicionar os Manuais de Regras
 
-Coloque seus arquivos .pdf ou .md organizados dentro do diretório data/rulebooks/ (ex: data/rulebooks/core/ e data/rulebooks/suplements/).
+Para que o motor de busca (RAG) funcione, coloque os seus ficheiros de regras (.pdf ou .md) dentro da respetiva estrutura de pastas na raiz do projeto:
 
-4. Indexar o Banco Vetorial
+    data/
+    └── rulebooks/
+        ├── core/        # Ex: Livro do Jogador, Manual dos Monstros
+        └── suplements/  # Ex: Suplementos e guias de cenários
 
-Execute o script para processar os manuais de forma recursiva e criar o banco vetorial local:
+4. Indexar a Base de Dados Vetorial
+
+Execute o comando abaixo para processar os manuais e gerar os embeddings locais:
 
     python -c "from src.rag_engine import build_vector_store; build_vector_store()"
 
 5. Iniciar a Aplicação
 
-certifique-se de que o serviço do Ollama está rodando em um terminal:
-    ollama serve
-
-Em outro terminal (com o ambiente virtual ativo), inicie o Streamlit:
+Agora basta iniciar o painel interativo. O sistema tentará ligar-se ao Ollama automaticamente:
 
     streamlit run app.py
 
-## 👥 Autoria
+O navegador abrirá automaticamente na página da aplicação (geralmente em http://localhost:8501). Utilize o menu lateral para alternar entre os módulos!
 
-    Desenvolvido por Fredson Arthur da Silva Gomes como parte de projeto de estudo e pesquisa acadêmica em Inteligência Artificial e Sistemas Operacionais/Engenharia de Software.
+# 👥 Autoria
+
+Desenvolvido por Fredson Arthur da Silva Gomes
+
+Projeto de âmbito acadêmico e de investigação focado em Engenharia de Software, Sistemas Operacionais e Aplicações Práticas de Inteligência Artificial Local.
