@@ -1,10 +1,23 @@
+# RPG Tabletop AI Assistant
+# Instalação (veja o README): instale o PyTorch para CPU antes, depois rode
+#   pip install -r requirements.txt
+#
+# Os números abaixo são versões mínimas. Depois de confirmar que tudo funciona na sua máquina,
+# gere uma lista exata para reproduzir o ambiente:
+#   pip freeze > requirements-lock.txt
+
+# Interface
 streamlit>=1.30.0
-langchain>=0.1.0
-langchain-community>=0.0.20
-langchain-chroma>=0.1.0
-langchain-huggingface>=0.0.1
-sentence-transformers>=2.2.2
+
+# LLM local
+ollama>=0.3.0
+
+# RAG: leitura, divisão em trechos, embeddings e banco vetorial
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-text-splitters>=0.3.0
+langchain-huggingface>=0.1.0
+langchain-chroma>=0.1.2
+sentence-transformers>=3.0.0
+chromadb>=0.5.0
 pypdf>=4.0.0
-chromadb>=0.4.22
-ollama>=0.1.5
-langchain-text-splitters>=0.0.1
