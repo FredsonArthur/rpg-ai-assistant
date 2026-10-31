@@ -4,9 +4,12 @@ Serviço do Ollama
 Verifica se o servidor local do Ollama está no ar e, se não estiver, tenta iniciá-lo.
 """
 
+import logging
 import socket
 import subprocess
 import time
+
+logger = logging.getLogger(__name__)
 
 HOST = "127.0.0.1"
 PORTA = 11434  # porta padrão do Ollama
@@ -35,7 +38,7 @@ def iniciar_ollama(aguardar: float = 15.0, host: str = HOST, porta: int = PORTA)
             start_new_session=True
         )
     except Exception as e:  # ex.: Ollama não instalado
-        print(f"Aviso: não foi possível iniciar o Ollama automaticamente: {e}")
+        logger.warning("Não foi possível iniciar o Ollama automaticamente: %s", e)
         return False
 
     limite = time.monotonic() + aguardar

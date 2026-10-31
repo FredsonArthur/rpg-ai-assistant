@@ -144,3 +144,7 @@ cython_debug/
 
 # Banco de Dados Vetorial do ChromaDB (evita erro de arquivo > 100MB no GitHub)
 data/vectordb/
+
+# Conversas salvas do assistente (banco SQLite local)
+data/chats.db
+data/chats.db-*

@@ -1,28 +1,28 @@
 """
-Módulo 3: IA como Jogador de treino (UC07, UC08, UC09)
+Modo Jogador: IA como Jogador de treino (UC07, UC08, UC09)
 ------------------------------------------------------
 O usuário é o Mestre e a IA interpreta um personagem jogador.
 
 - UC07: perfil (arquétipo) do jogador: Iniciante, Tático, Roleplay ou Personalizado.
   Cada perfil muda o trecho do prompt e a temperatura, e pode ser trocado no meio da sessão.
 - UC08: a IA responde como o personagem, no formato [Ação]/[Fala], sem metagame. Por isso este
-  módulo NÃO consulta os livros: o personagem só pode saber o que o Mestre descreveu.
+  modo NÃO consulta os livros: o personagem só pode saber o que o Mestre descreveu.
 - UC09: feedback pedagógico pós-sessão, em que a IA sai do personagem e vira mentora do Mestre.
 """
 
 import re
 
-from src.config import HISTORY_WINDOW, ARCHETYPE_TEMPERATURES, TEMPERATURE_FEEDBACK
-from src.rag_engine import chat_llm
-from src.prompt_templates import PLAYER_PROMPT, ARCHETYPES, FEEDBACK_PROMPT
-from src.dice import bandeja_de_dados
-from src.utils import janela_historico
+from rpgassistant import config
+from rpgassistant.core.historico import Historico, janela_historico
+from rpgassistant.services import llm
+from rpgassistant.services.dados import bandeja_de_dados
+from rpgassistant.services.prompts import ARCHETYPES, FEEDBACK_PROMPT, PLAYER_PROMPT
 
 # Perfis oferecidos ao usuário (os três prontos + um texto livre)
 ARQUETIPOS_DISPONIVEIS = list(ARCHETYPES) + ["Personalizado"]
 
+FICHA_PADRAO = "Maga Elfa, Nível 1, PV 8, Inteligência +3, Destreza +2. Curiosa, gentil e um pouco medrosa."
 PERFIL_NEUTRO = "Jogue de forma equilibrada, de acordo com a personalidade descrita na ficha."
-TEMPERATURA_PADRAO = 0.5
 
 # O feedback precisa de pelo menos esta quantidade de falas do Mestre (usuário) para ser útil
 MIN_FALAS_MESTRE = 2
@@ -68,7 +68,7 @@ def formato_valido(resposta: str) -> bool:
     return bool(_RE_ACAO.search(resposta)) and bool(_RE_FALA.search(resposta))
 
 
-def run_player_simulator_turn(user_input: str, character: str, chat_history: list,
+def run_player_simulator_turn(user_input: str, character: str, chat_history: Historico,
                               arquetipo: str = "Iniciante", arquetipo_personalizado: str = "") -> str:
     """
     Processa um turno do jogador virtual, respondendo à narração do Mestre (user_input).
@@ -85,29 +85,29 @@ def run_player_simulator_turn(user_input: str, character: str, chat_history: lis
     )
 
     messages = [{"role": "system", "content": system_prompt}]
-    for msg in janela_historico(chat_history, HISTORY_WINDOW):
+    for msg in janela_historico(chat_history, config.settings.history_window):
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": user_input})
 
-    temperatura = ARCHETYPE_TEMPERATURES.get(arquetipo, TEMPERATURA_PADRAO)
-    resposta = chat_llm(messages, temperature=temperatura)['message']['content'].strip()
+    temperatura = config.settings.temperatura_do_arquetipo(arquetipo)
+    resposta = llm.chat_llm(messages, temperature=temperatura)['message']['content'].strip()
 
     if not formato_valido(resposta):
         messages.append({"role": "assistant", "content": resposta})
         messages.append({"role": "user", "content": LEMBRETE_FORMATO})
-        segunda = chat_llm(messages, temperature=min(temperatura, 0.4))['message']['content'].strip()
+        segunda = llm.chat_llm(messages, temperature=min(temperatura, 0.4))['message']['content'].strip()
         if formato_valido(segunda):
             resposta = segunda
 
     return resposta
 
 
-def historico_suficiente(chat_history: list) -> bool:
+def historico_suficiente(chat_history: Historico) -> bool:
     """Indica se já há falas do Mestre suficientes para gerar o feedback (UC09, FA01)."""
     return sum(1 for msg in chat_history if msg["role"] == "user") >= MIN_FALAS_MESTRE
 
 
-def formatar_historico(chat_history: list, limite: int = LIMITE_HISTORICO_FEEDBACK) -> str:
+def formatar_historico(chat_history: Historico, limite: int = LIMITE_HISTORICO_FEEDBACK) -> str:
     """Transforma o histórico em texto para o prompt de feedback, mantendo o trecho mais recente."""
     linhas = []
     for msg in chat_history:
@@ -119,7 +119,7 @@ def formatar_historico(chat_history: list, limite: int = LIMITE_HISTORICO_FEEDBA
     return texto
 
 
-def gerar_feedback(chat_history: list) -> str:
+def gerar_feedback(chat_history: Historico) -> str:
     """
     UC09: a IA sai do personagem e analisa a condução do Mestre (o usuário).
     Com histórico curto demais, devolve um aviso em vez de chamar o modelo (FA01).
@@ -133,4 +133,4 @@ def gerar_feedback(chat_history: list) -> str:
         {"role": "system", "content": FEEDBACK_PROMPT.format(history=formatar_historico(chat_history))},
         {"role": "user", "content": "Gere o feedback da sessão, seguindo as 3 partes."}
     ]
-    return chat_llm(messages, temperature=TEMPERATURE_FEEDBACK)['message']['content'].strip()
+    return llm.chat_llm(messages, temperature=config.settings.temperatura_feedback)['message']['content'].strip()

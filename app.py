@@ -14,18 +14,19 @@ em streaming, e tudo roda localmente, via Ollama.
 
 import streamlit as st
 
-from src.assistant import (
+from rpgassistant import config
+from rpgassistant.core.modos import (
     MODO_ASSISTENTE, MODO_MESTRE, MODO_JOGADOR, MODOS, ROTULOS_MODO, AJUDA,
     interpretar_entrada, historico_para_llm,
 )
-from src.config import OLLAMA_MODEL
-from src.ollama_service import ollama_ativo, iniciar_ollama
-from src.rag_engine import OllamaError, formatar_metricas
-from src.modules.module1_tutor import run_module1_chat_stream
-from src.modules.module2_master import (
+from rpgassistant.errors import OllamaError
+from rpgassistant.logs import configurar_logs
+from rpgassistant.modes.assistente import formatar_metricas, responder_stream
+from rpgassistant.modes.mestre import (
     run_master_turn, run_master_turn_stream, extrair_estado, ocultar_linha_estado,
 )
-from src.modules.module3_player import (
+from rpgassistant.services.ollama_service import ollama_ativo, iniciar_ollama
+from rpgassistant.modes.jogador import (
     run_player_simulator_turn,
     gerar_feedback,
     historico_suficiente,
@@ -33,6 +34,9 @@ from src.modules.module3_player import (
     ARQUETIPOS_DISPONIVEIS,
     AVISO_HISTORICO_CURTO,
 )
+
+configurar_logs()
+config.settings.garantir_pastas()
 
 st.set_page_config(
     page_title="RPG Tabletop AI Assistant",
@@ -152,7 +156,7 @@ def garantir_ollama() -> None:
             iniciar_ollama()
     if not ollama_ativo():
         st.warning("O Ollama não está rodando. Inicie-o com `ollama serve` (e baixe o modelo com "
-                   f"`ollama pull {OLLAMA_MODEL}`, se ainda não fez).")
+                   f"`ollama pull {config.settings.ollama_model}`, se ainda não fez).")
 
 
 # ==========================================
@@ -329,7 +333,7 @@ def barra_lateral() -> bool:
             limpar_tudo()
             st.rerun()
 
-        st.caption(f"Modelo local: **{OLLAMA_MODEL}** (Ollama). Funciona sem internet.")
+        st.caption(f"Modelo local: **{config.settings.ollama_model}** (Ollama). Funciona sem internet.")
     return pedir_feedback
 
 
@@ -365,7 +369,7 @@ def processar_mensagem(texto: str) -> None:
         try:
             if modo == MODO_ASSISTENTE:
                 with st.spinner("Consultando os tomos sagrados..."):
-                    stream, fontes, consulta = run_module1_chat_stream(texto, historico)
+                    stream, fontes, consulta = responder_stream(texto, historico)
                 _, resposta = exibir_stream(stream)
                 extras = {
                     "fontes": fontes,

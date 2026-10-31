@@ -35,10 +35,10 @@ Dentro de uma aventura ou sessão, só os comandos com `/` trocam de modo (ou "v
 
 | Conceito | Onde aparece no projeto |
 |---|---|
-| **Tokenização** | O modelo trabalha com tokens, e a janela de contexto é limitada (`OLLAMA_NUM_CTX`, em `src/config.py`). Cada resposta do Assistente exibe os tokens usados no prompt e na resposta. |
+| **Tokenização** | O modelo trabalha com tokens, e a janela de contexto é limitada (`OLLAMA_NUM_CTX`, em `rpgassistant/config.py`). Cada resposta do Assistente exibe os tokens usados no prompt e na resposta. |
 | **Embeddings** | Os trechos dos livros viram vetores com `paraphrase-multilingual-MiniLM-L12-v2`, guardados no ChromaDB. A pergunta também vira um vetor, e a busca traz os trechos mais próximos. |
 | **Transformer** | O Llama 3 (via Ollama) e o modelo de embeddings são baseados em Transformers. O app controla a geração com a temperatura (por modo e por perfil de jogador) e a janela de contexto. |
-| **Engenharia de prompt** | Todos os prompts ficam em `src/prompt_templates.py`: papéis, regras de conduta, contexto delimitado, formato de saída obrigatório, exemplo de resposta e reescrita da pergunta. |
+| **Engenharia de prompt** | Todos os prompts ficam em `rpgassistant/services/prompts.py`: papéis, regras de conduta, contexto delimitado, formato de saída obrigatório, exemplo de resposta e reescrita da pergunta. |
 | **RAG** | Livros → trechos → embeddings → busca por similaridade → contexto no prompt → resposta com fonte. |
 
 ---
@@ -46,17 +46,17 @@ Dentro de uma aventura ou sessão, só os comandos com `/` trocam de modo (ou "v
 ## ⚙️ Como funciona
 
 ```
- Streamlit (app.py)  ──►  assistant.py  (comando, troca de modo, histórico de cada modo)
+ Streamlit (app.py)  ──►  core/modos.py  (comandos, troca de modo, histórico de cada modo)
                               │
         ┌─────────────────────┼─────────────────────┐
         ▼                     ▼                     ▼
- module1_tutor.py     module2_master.py     module3_player.py
-  (Assistente)            (Mestre)              (Jogador)
+ modes/assistente.py   modes/mestre.py      modes/jogador.py
+    (Assistente)          (Mestre)             (Jogador)
         │                     │                     │
-        └──────► rag_engine.py (busca nos livros) ◄─┘   (o Jogador não usa)
+        └──► services/rag.py (busca nos livros) ◄───┘   (o Jogador não usa)
                   │                 │
               ChromaDB          Ollama (Llama 3)
-         (data/vectordb)      (chat_llm / chat_llm_stream)
+         (data/vectordb)      (services/llm.py: resposta inteira ou streaming)
 ```
 
 ## 🛠️ Stack
@@ -71,25 +71,33 @@ Dentro de uma aventura ou sessão, só os comandos com `/` trocam de modo (ou "v
 
 ```
 rpg-ai-assistant/
-├── app.py                  # Interface (Streamlit): chat único e menu lateral
+├── app.py                      # Interface (Streamlit): chat único e menu lateral
 ├── requirements.txt
+├── pyproject.toml              # Metadados do projeto e configuração do ruff
 ├── data/
-│   ├── rulebooks/          # Seus livros (.md ou .pdf)
-│   │   ├── core/           # Livros Core (ex.: Livro do Jogador, Manual dos Monstros)
-│   │   └── suplements/     # Suplementos e guias
-│   └── vectordb/           # Base vetorial gerada (não vai para o GitHub)
-└── src/
-    ├── config.py           # Caminhos, parâmetros do RAG, modelo e temperaturas
-    ├── prompt_templates.py # Todos os prompts do sistema
-    ├── assistant.py        # Comandos, troca de modo e histórico por modo
-    ├── rag_engine.py       # Indexação, busca, chamadas ao Ollama e streaming
-    ├── ollama_service.py   # Verifica e inicia o servidor do Ollama
-    ├── dice.py             # Dados sorteados em Python para o Mestre e o Jogador
-    ├── utils.py            # Janela de histórico
-    └── modules/
-        ├── module1_tutor.py   # Modo Assistente
-        ├── module2_master.py  # Modo Mestre
-        └── module3_player.py  # Modo Jogador e feedback pós-sessão
+│   ├── rulebooks/              # Seus livros (.md ou .pdf)
+│   │   ├── core/               # Livros Core (ex.: Livro do Jogador, Manual dos Monstros)
+│   │   └── suplements/         # Suplementos e guias
+│   └── vectordb/               # Base vetorial gerada (não vai para o GitHub)
+├── rpgassistant/
+│   ├── config.py               # Configuração tipada: caminhos, RAG, modelo e temperaturas
+│   ├── errors.py               # Erros do domínio (OllamaError)
+│   ├── logs.py                 # Configuração dos logs
+│   ├── indexar.py              # Indexação dos livros: python -m rpgassistant.indexar
+│   ├── core/
+│   │   ├── modos.py            # Comandos, troca de modo e histórico por modo
+│   │   └── historico.py        # Janela de histórico enviada ao modelo
+│   ├── modes/
+│   │   ├── assistente.py       # Modo Assistente
+│   │   ├── mestre.py           # Modo Mestre
+│   │   └── jogador.py          # Modo Jogador e feedback pós-sessão
+│   └── services/
+│       ├── llm.py              # Chamadas ao Ollama (inteira e streaming)
+│       ├── rag.py              # Indexação, busca nos livros e reescrita da pergunta
+│       ├── prompts.py          # Todos os prompts do sistema
+│       ├── dados.py            # Dados sorteados em Python
+│       └── ollama_service.py   # Verifica e inicia o servidor do Ollama
+└── tests/                      # Testes automatizados
 ```
 
 ---
@@ -146,7 +154,7 @@ data/rulebooks/suplements/
 ### 4. Indexar os livros (só na primeira vez ou quando mudar os livros)
 
 ```bash
-python -c "from src.rag_engine import build_vector_store; build_vector_store()"
+python -m rpgassistant.indexar
 ```
 
 Na primeira execução, o modelo de embeddings é baixado (precisa de internet nesse momento). A indexação lê os arquivos, divide em trechos e grava os vetores em `data/vectordb`, mostrando o progresso e avisando se algum arquivo não puder ser lido. Em CPU, pode levar de dez a trinta minutos.
@@ -171,7 +179,7 @@ O navegador abre em `http://localhost:8501`. Se o Ollama não estiver rodando, o
 
 ## 🔧 Configuração
 
-Os parâmetros ficam em `src/config.py`. O modelo e a janela de contexto também podem ser trocados sem editar o código:
+Os parâmetros ficam em `rpgassistant/config.py`. O modelo e a janela de contexto também podem ser trocados sem editar o código:
 
 ```bash
 # Usa outro modelo (baixe antes com: ollama pull llama3.1)
@@ -182,6 +190,16 @@ OLLAMA_NUM_CTX=4096 streamlit run app.py
 ```
 
 Mudar `EMBEDDING_MODEL_NAME`, `CHUNK_SIZE` ou `CHUNK_OVERLAP` exige indexar os livros de novo.
+
+---
+
+## 🧪 Testes
+
+```bash
+python -m unittest discover -s tests -t .
+```
+
+Os testes simulam o Ollama e a base vetorial, então rodam sem o Ollama e sem os livros indexados.
 
 ---
 

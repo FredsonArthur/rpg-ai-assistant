@@ -90,7 +90,7 @@ class Acao:
     modo: Optional[str] = None
 
 
-def _normalizar(texto: str) -> str:
+def normalizar(texto: str) -> str:
     """Minúsculas e sem acentos, para comparar com os padrões."""
     decomposto = unicodedata.normalize("NFD", texto.lower())
     return "".join(c for c in decomposto if unicodedata.category(c) != "Mn")
@@ -111,7 +111,7 @@ def interpretar_entrada(texto: str, modo_atual: str) -> Acao:
       explicitamente para voltar ao assistente.
     """
     bruto = texto.strip()
-    normal = _normalizar(bruto)
+    normal = normalizar(bruto)
 
     if normal.startswith("/"):
         comando = normal.split()[0]

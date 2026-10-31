@@ -2,10 +2,13 @@
 Funções utilitárias compartilhadas entre os módulos.
 """
 
-from typing import List
+from typing import Dict, List
+
+Mensagem = Dict[str, str]
+Historico = List[Mensagem]
 
 
-def janela_historico(chat_history: List[dict], tamanho: int) -> List[dict]:
+def janela_historico(chat_history: Historico, tamanho: int) -> Historico:
     """
     Seleciona as mensagens que vão ao modelo: no máximo `tamanho`, sempre preservando a
     primeira (a abertura da cena) e as mais recentes. Assim, uma conversa longa não perde

@@ -1,0 +1,1 @@
+"""Interface gráfica (Qt / PySide6). A lógica de cada chat fica em rpgassistant.core; aqui só há a tela."""
