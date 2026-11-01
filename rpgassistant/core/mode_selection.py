@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from rpgassistant.core.modos import (
-    MODO_ASSISTENTE, MODO_JOGADOR, MODO_MESTRE, interpretar_entrada, normalizar,
+    MODO_ASSISTENTE, MODO_JOGADOR, MODO_MESTRE, detectar_pedido_de_modo, normalizar,
 )
 
 MSG_BOAS_VINDAS = """Como você quer usar o assistente? Escolha digitando o número ou o nome:
@@ -71,9 +71,9 @@ def escolher_modo(texto: str) -> Escolha:
     if opcao:
         return Escolha(_OPCOES[opcao.group(1)])
 
-    pedido = interpretar_entrada(texto, MODO_ASSISTENTE)
-    if pedido.tipo == "trocar_modo" and pedido.modo:
-        return Escolha(pedido.modo)
+    pedido = detectar_pedido_de_modo(texto)
+    if pedido:
+        return Escolha(pedido)
 
     if parece_pergunta(texto):
         return Escolha(MODO_ASSISTENTE, pergunta=True)

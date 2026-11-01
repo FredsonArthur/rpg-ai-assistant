@@ -110,27 +110,14 @@ def _preparar_turno(user_input: str, scenario: str, character: str,
     return messages, fontes
 
 
-def run_master_turn(user_input: str, scenario: str, character: str,
-                    chat_history: Historico, estado: str = "") -> Tuple[str, str, str]:
-    """
-    Processa um turno do Mestre virtual.
-
-    chat_history: mensagens anteriores, SEM a mensagem atual (user_input).
-    estado: estado de combate vigente (a linha [ESTADO] do turno anterior), ou "".
-    Retorna (fala do Mestre sem a linha de estado, fontes, novo estado).
-    Levanta OllamaError se a LLM local estiver indisponível.
-    """
-    messages, fontes = _preparar_turno(user_input, scenario, character, chat_history, estado)
-    response = llm.chat_llm(messages, temperature=config.settings.temperatura_mestre)
-
-    texto, novo_estado = extrair_estado(response['message']['content'], estado)
-    return texto, fontes, novo_estado
-
-
 def run_master_turn_stream(user_input: str, scenario: str, character: str,
                            chat_history: Historico, estado: str = "") -> Tuple[llm.RespostaEmStream, str]:
     """
-    Como o run_master_turn, mas a fala chega em streaming. Retorna (stream, fontes).
+    Processa um turno do Mestre virtual e devolve (stream, fontes): a fala chega em streaming.
+
+    chat_history: mensagens anteriores, SEM a mensagem atual (user_input).
+    estado: estado de combate vigente (a linha [ESTADO] do turno anterior), ou "".
+    Levanta OllamaError se a LLM local estiver indisponível.
     Quando o stream terminar, passe `stream.texto` para extrair_estado() para separar a fala
     do novo estado; durante o streaming, use ocultar_linha_estado() para exibir o texto.
     """

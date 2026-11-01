@@ -8,7 +8,6 @@
 
 # Interface
 PySide6>=6.6.0
-streamlit>=1.30.0  # só para o app antigo (app.py); sai no passo 5
 
 # LLM local
 ollama>=0.3.0

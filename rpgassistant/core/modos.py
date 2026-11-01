@@ -1,20 +1,12 @@
 """
-Orquestrador do assistente (sem dependência do Streamlit)
----------------------------------------------------------
-O app tem um chat único e três modos de uso:
-
-- Assistente: responde dúvidas sobre qualquer assunto (regras e lore de D&D com apoio dos livros).
-- Mestre: a IA conduz uma aventura solo e o usuário joga.
-- Jogador: o usuário é o Mestre e a IA interpreta um personagem.
-
-Este módulo decide o que o usuário quis dizer (comando, pedido para trocar de modo ou mensagem
-comum) e separa o histórico de cada modo para que o Mestre não receba a conversa de regras como
-se fosse a história da aventura.
+Modos de uso
+------------
+Os três modos de um chat (Assistente, Mestre e Jogador) e a leitura de pedidos em linguagem natural,
+como "seja meu mestre" ou "quero ser o mestre", usada na primeira mensagem de cada chat.
 """
 
 import re
 import unicodedata
-from dataclasses import dataclass
 from typing import List, Optional
 
 MODO_ASSISTENTE = "assistente"
@@ -28,23 +20,7 @@ ROTULOS_MODO = {
     MODO_JOGADOR: "⚔️ Jogador (a IA joga)",
 }
 
-AJUDA = """**Como usar o assistente**
-- No modo **Assistente**, pergunte o que quiser: regras, lore, NPCs, encontros, itens... ou qualquer outro assunto.
-- Para a IA virar **Mestre**: `/mestre` ou "seja meu mestre". Você joga a aventura.
-- Para a IA virar **Jogador**: `/jogador` ou "quero ser o mestre". Você narra e ela responde como personagem.
-- `/feedback`: no modo Jogador, a IA analisa a sua condução como Mestre.
-- `/assistente`: volta ao modo Assistente (a aventura fica guardada).
-- Também dá para trocar de modo pelo menu lateral.
-
-Dentro de uma sessão de Mestre ou Jogador, só os comandos com `/` trocam de modo, para que o que você narra ou faz no jogo nunca seja confundido com um comando."""
-
 LIMITE_TEXTO_PEDIDO = 200  # pedidos de troca de modo são frases curtas
-
-_COMANDOS_MODO = {
-    "/assistente": MODO_ASSISTENTE,
-    "/mestre": MODO_MESTRE,
-    "/jogador": MODO_JOGADOR,
-}
 
 _MESTRE = r"(?:mestre|narrador|dm|gm|game ?master|dungeon ?master)"
 _JOGADOR = r"(?:jogador|personagem jogador|pj|player)"
@@ -77,19 +53,6 @@ _EU_MESTRE = [
 ]
 _PEDIDOS_JOGADOR = _pedido_ia_assumir(_JOGADOR)
 
-_VOLTAR = [
-    r"\b(?:volte|voltar|volta|retorne|retornar|sair|saia)\b.{0,25}\b(?:assistente|modo\s+normal)\b",
-    r"\bmodo\s+assistente\b",
-]
-
-
-@dataclass
-class Acao:
-    """O que o usuário quis dizer: trocar_modo, ajuda, feedback ou mensagem comum."""
-    tipo: str
-    modo: Optional[str] = None
-
-
 def normalizar(texto: str) -> str:
     """Minúsculas e sem acentos, para comparar com os padrões."""
     decomposto = unicodedata.normalize("NFD", texto.lower())
@@ -100,34 +63,16 @@ def _casa(padroes: List[str], texto: str) -> bool:
     return any(re.search(p, texto) for p in padroes)
 
 
-def interpretar_entrada(texto: str, modo_atual: str) -> Acao:
+def detectar_pedido_de_modo(texto: str) -> Optional[str]:
     """
-    Decide o que fazer com o que o usuário digitou.
-
-    - Comandos com "/" valem em qualquer modo.
-    - Pedidos em linguagem natural ("seja meu mestre") só valem no modo Assistente: dentro de
-      uma sessão de jogo o usuário está narrando ou agindo, e uma fala como "o mestre da guilda
-      manda você atuar com cuidado" não pode trocar o modo por engano. A única exceção é pedir
-      explicitamente para voltar ao assistente.
+    Lê um pedido em linguagem natural e devolve o modo pedido, ou None se não houver pedido (ou se houver
+    pedidos contraditórios). Frases longas, que não parecem um pedido, são ignoradas, e perguntas não
+    contam como declaração ("Quero ser mestre, por onde começar?" é uma dúvida, não um pedido).
     """
     bruto = texto.strip()
-    normal = normalizar(bruto)
-
-    if normal.startswith("/"):
-        comando = normal.split()[0]
-        if comando in _COMANDOS_MODO:
-            return Acao("trocar_modo", _COMANDOS_MODO[comando])
-        if comando == "/feedback":
-            return Acao("feedback")
-        return Acao("ajuda")  # "/ajuda" e comandos desconhecidos
-
-    if modo_atual != MODO_ASSISTENTE:
-        if _casa(_VOLTAR, normal):
-            return Acao("trocar_modo", MODO_ASSISTENTE)
-        return Acao("mensagem")
-
     if len(bruto) > LIMITE_TEXTO_PEDIDO:
-        return Acao("mensagem")
+        return None
+    normal = normalizar(bruto)
 
     eh_pergunta = "?" in bruto
     quer_mestre = _casa(_PEDIDOS_MESTRE, normal) or (
@@ -135,19 +80,7 @@ def interpretar_entrada(texto: str, modo_atual: str) -> Acao:
     quer_jogador = _casa(_PEDIDOS_JOGADOR, normal) or (not eh_pergunta and _casa(_EU_MESTRE, normal))
 
     if quer_mestre and not quer_jogador:
-        return Acao("trocar_modo", MODO_MESTRE)
+        return MODO_MESTRE
     if quer_jogador and not quer_mestre:
-        return Acao("trocar_modo", MODO_JOGADOR)
-    return Acao("mensagem")  # nenhum pedido, ou pedidos contraditórios
-
-
-def historico_para_llm(mensagens: List[dict], modo: str, sessao: int) -> List[dict]:
-    """
-    Monta o histórico enviado ao modelo: só as falas do modo atual e da sessão atual.
-    Avisos do sistema (troca de modo, ajuda, feedback) nunca vão ao modelo.
-    """
-    return [
-        {"role": m["role"], "content": m["content"]}
-        for m in mensagens
-        if m["role"] in ("user", "assistant") and m.get("mode") == modo and m.get("sessao", 0) == sessao
-    ]
+        return MODO_JOGADOR
+    return None

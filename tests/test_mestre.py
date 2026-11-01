@@ -64,14 +64,23 @@ class MontarConsultaTest(unittest.TestCase):
 RESPOSTA_COMBATE = "O goblin ataca! Acerta 6 de dano.\nO que você faz?\n[ESTADO] Jogador PV 9/15 | Goblin PV 7/7 CA 15"
 
 
-class RunMasterTurnTest(BaseTeste):
+def rodar_turno(user_input, cenario, personagem, historico, estado=""):
+    """Executa um turno e devolve (fala sem a linha de estado, fontes, novo estado), como o controlador faz."""
+    stream, fontes = mestre.run_master_turn_stream(user_input, cenario, personagem, historico, estado)
+    list(stream.tokens())
+    texto, novo_estado = mestre.extrair_estado(stream.texto, estado)
+    return texto, fontes, novo_estado
+
+
+class RunMasterTurnStreamTest(BaseTeste):
     def test_monta_o_prompt_e_devolve_texto_fontes_e_estado(self):
         falso = self.usar_ollama(OllamaFalso(RESPOSTA_COMBATE))
         consultas = self.usar_busca("CTX-REGRAS", "Core | MM")
-        texto, fontes, estado = mestre.run_master_turn(
+        texto, fontes, estado = rodar_turno(
             "Ataco o goblin", "Tumba", "Guerreiro", historico(30), "Jogador PV 15/15 | Goblin PV 7/7 CA 15")
         chamada = falso.chamadas[0]
         sistema = chamada["messages"][0]["content"]
+        self.assertTrue(chamada["stream"])
         self.assertIn("Jogador PV 15/15 | Goblin PV 7/7 CA 15", sistema)
         self.assertRegex(sistema, r"<bandeja_de_dados>\nd20: ")
         self.assertIn("CTX-REGRAS", sistema)
@@ -86,23 +95,23 @@ class RunMasterTurnTest(BaseTeste):
     def test_sem_estado_avisa_que_nao_ha_combate(self):
         falso = self.usar_ollama(OllamaFalso("Você vê um corredor."))
         self.usar_busca()
-        mestre.run_master_turn("Abro a porta", "Tumba", "Guerreiro", [], "")
+        rodar_turno("Abro a porta", "Tumba", "Guerreiro", [], "")
         self.assertIn("Sem combate em andamento.", falso.chamadas[0]["messages"][0]["content"])
 
     def test_so_role_e_content_seguem_ao_modelo(self):
         falso = self.usar_ollama(OllamaFalso("ok"))
         self.usar_busca()
-        mestre.run_master_turn("ok", "T", "C", [{"role": "assistant", "content": "abertura", "estado": "X"},
-                                                 {"role": "user", "content": "oi"}], "")
+        rodar_turno("ok", "T", "C", [{"role": "assistant", "content": "abertura", "estado": "X"},
+                                      {"role": "user", "content": "oi"}], "")
         self.assertTrue(all(set(m) == {"role", "content"} for m in falso.chamadas[0]["messages"]))
 
     def test_falha_do_ollama(self):
         self.usar_ollama(OllamaFalso(falha=ConnectionError("fora")))
         self.usar_busca()
         with self.assertRaises(OllamaError):
-            mestre.run_master_turn("x", "T", "C", [], "")
+            mestre.run_master_turn_stream("x", "T", "C", [], "")
 
-    def test_stream(self):
+    def test_estado_vindo_do_stream(self):
         self.usar_ollama(OllamaFalso(chunks=["O goblin ataca.\n", "[ESTADO] Jogador PV 5/10"]))
         self.usar_busca("CTX2", "Core | MM")
         stream, fontes = mestre.run_master_turn_stream("Ataco", "Tumba", "Guerreiro", [], "")

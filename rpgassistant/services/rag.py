@@ -17,7 +17,6 @@ import logging
 import os
 import shutil
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from rpgassistant import config
@@ -268,8 +267,3 @@ def reescrever_pergunta(question: str, chat_history: Historico) -> str:
         # Sem reescrita a busca ainda funciona; a falha real aparecerá na chamada principal.
         logger.debug("Reescrita da pergunta ignorada: %s", e)
     return question
-
-
-def pasta_dos_livros() -> Path:
-    """Pasta onde ficam os livros (útil para mensagens ao usuário)."""
-    return config.settings.rulebooks_dir

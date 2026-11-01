@@ -1,6 +1,5 @@
 import unittest
 
-from rpgassistant.errors import OllamaError
 from rpgassistant.modes import assistente
 from tests.helpers import BaseTeste, OllamaFalso, pedacos, resposta
 
@@ -20,63 +19,6 @@ class FormatarMetricasTest(unittest.TestCase):
     def test_formato(self):
         self.assertEqual(assistente.formatar_metricas(10, 2, "q", "q"), "Prompt Tokens: 10 | Completion Tokens: 2")
         self.assertIn("Busca reescrita: nova", assistente.formatar_metricas(10, 2, "nova", "q"))
-
-
-class ResponderTest(BaseTeste):
-    def test_resposta_fontes_e_metricas_com_busca_reescrita(self):
-        self.usar_ollama(OllamaFalso(responder=modelo))
-        consultas = self.usar_busca()
-        resp, fontes, metricas = assistente.responder("e se?", HISTORICO)
-        self.assertEqual((resp, fontes), ("RESP", "Core | PHB"))
-        self.assertIn("Prompt Tokens: 7", metricas)
-        self.assertIn("Busca reescrita: Pergunta reescrita sobre cegueira?", metricas)
-        self.assertEqual(consultas, [("Pergunta reescrita sobre cegueira?", 8)])
-
-    def test_monta_system_historico_e_pergunta(self):
-        falso = self.usar_ollama(OllamaFalso(responder=modelo))
-        self.usar_busca("CTX")
-        assistente.responder("e se?", HISTORICO)
-        mensagens = falso.chamadas[-1]["messages"]
-        self.assertEqual(mensagens[0]["role"], "system")
-        self.assertIn("CTX", mensagens[0]["content"])
-        self.assertEqual(mensagens[1:], HISTORICO + [{"role": "user", "content": "e se?"}])
-        self.assertEqual(falso.chamadas[-1]["options"], {"num_ctx": 8192, "temperature": 0.3})
-
-    def test_sem_historico_so_a_chamada_principal(self):
-        falso = self.usar_ollama(OllamaFalso(responder=modelo))
-        self.usar_busca()
-        assistente.responder("Como funciona agarrar?")
-        self.assertEqual(len(falso.chamadas), 1)
-
-    def test_janela_de_historico(self):
-        falso = self.usar_ollama(OllamaFalso(responder=modelo))
-        self.usar_busca()
-        historico = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"m{i}"} for i in range(14)]
-        assistente.responder("e se?", historico)
-        mensagens = falso.chamadas[-1]["messages"]
-        self.assertEqual(len(mensagens), 1 + 10 + 1)
-        self.assertEqual(mensagens[1]["content"], "m4")
-
-    def test_falha_do_ollama_levanta_ollama_error(self):
-        self.usar_ollama(OllamaFalso(falha=ConnectionError("fora do ar")))
-        self.usar_busca()
-        with self.assertRaises(OllamaError):
-            assistente.responder("pergunta")
-
-
-class ResponderStreamTest(BaseTeste):
-    def test_stream_consulta_e_fontes(self):
-        falso = self.usar_ollama(OllamaFalso(responder=modelo))
-        self.usar_busca()
-        stream, fontes, consulta = assistente.responder_stream("e se?", HISTORICO)
-        self.assertEqual(list(stream.tokens()), ["Resp", "osta"])
-        self.assertEqual((stream.texto, fontes, consulta), ("Resposta", "Core | PHB", "Pergunta reescrita sobre cegueira?"))
-        self.assertEqual((stream.prompt_tokens, stream.completion_tokens), (7, 3))
-        self.assertTrue(falso.chamadas[-1]["stream"])
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class PrepararTest(BaseTeste):

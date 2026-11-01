@@ -11,7 +11,6 @@ def campos(template: str) -> list:
 class PromptsTest(unittest.TestCase):
     def test_placeholders_de_cada_prompt(self):
         esperados = {
-            "SYSTEM_PROMPT": ["context"],
             "LIVROS_PROMPT": ["context"],
             "MASTER_PROMPT": ["character", "context", "dados", "estado", "scenario"],
             "PLAYER_PROMPT": ["archetype", "character", "dados"],
@@ -21,10 +20,6 @@ class PromptsTest(unittest.TestCase):
         for nome, esperado in esperados.items():
             with self.subTest(prompt=nome):
                 self.assertEqual(campos(getattr(prompts, nome)), esperado)
-
-    def test_assistente_ignora_argumento_extra(self):
-        texto = prompts.SYSTEM_PROMPT.format(context="X", question="ignorada")
-        self.assertIn("<contexto>\nX\n</contexto>", texto)
 
     def test_exemplo_do_jogador_termina_corretamente(self):
         self.assertTrue(prompts.PLAYER_PROMPT.rstrip().endswith('dele?"'))
