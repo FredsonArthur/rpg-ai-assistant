@@ -120,7 +120,7 @@ rpg-ai-assistant/
 
 ### 1. Pré-requisitos
 
-- **Python 3.10 ou superior.** Se a instalação do PyTorch ou do PySide6 falhar em uma versão muito recente do Python, use o Python 3.12.
+- **Python 3.10 a 3.13 (recomendado: 3.12).** Versões mais novas, como a 3.14 e a 3.15, ainda não têm pacote pronto para todas as bibliotecas, e a instalação falha pedindo um compilador C++ (no Windows, o "Microsoft Visual C++ Build Tools"). Confira a sua versão com `python --version` e, se for mais nova, instale o Python 3.12 antes de continuar (<https://www.python.org/downloads/>; no Windows, marque "Add python.exe to PATH").
 - **Ollama:** <https://ollama.com>
 - Cerca de **8 GB de RAM** livres e uns 10 GB de disco (modelo, embeddings e dependências). Placa de vídeo não é necessária, mas deixa as respostas mais rápidas.
 
@@ -142,17 +142,38 @@ git clone https://github.com/FredsonArthur/rpg-ai-assistant.git
 cd rpg-ai-assistant
 ```
 
-Crie o ambiente virtual e instale as dependências:
+Crie o ambiente virtual e instale as dependências.
+
+**Linux e macOS:**
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate        # No Windows: venv\Scripts\activate
+source venv/bin/activate
+```
 
+**Windows (PowerShell ou Prompt de Comando):**
+
+```bash
+py -3.12 -m venv venv
+venv\Scripts\activate
+```
+
+(o `py -3.12` escolhe o Python 3.12 mesmo que existam versões mais novas instaladas). Depois, nos dois casos:
+
+```bash
 # PyTorch só para CPU (evita baixar vários GB de bibliotecas de GPU)
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 pip install -r requirements.txt
 ```
+
+Para conferir se ficou tudo certo (Python, bibliotecas, livros, Ollama e modelo), rode o diagnóstico:
+
+```bash
+python -m rpgassistant.diagnostico
+```
+
+Ele lista o que está instalado e, no final, o que ainda precisa de atenção, com o comando para resolver. Se pedir ajuda a alguém, copie e envie essa saída.
 
 ### 3. Adicionar os livros de regras
 
@@ -240,6 +261,8 @@ Os testes simulam o Ollama, a base vetorial e o Qt, então rodam sem o Ollama, s
 
 | Problema | O que fazer |
 |---|---|
+| "Microsoft Visual C++ 14.0 or greater is required" ao instalar (Windows), ou um pacote "Failed to build" | O seu Python é novo demais (por exemplo, 3.15) e a biblioteca não tem pacote pronto. Instale o Python 3.12, apague a pasta `venv` e refaça o passo 2 com `py -3.12 -m venv venv`. Não é preciso instalar compilador nenhum. |
+| O app fecha logo ao abrir, sem janela (no VSCode aparece "SystemExit: 1") | O programa encerra com código 1 quando o ambiente está incompleto e escreve o motivo no terminal. Rode `python main.py` no terminal, com o ambiente virtual ativado, e leia a mensagem, ou rode `python -m rpgassistant.diagnostico`. No VSCode, confirme o interpretador do ambiente virtual (Ctrl+Shift+P, "Python: Select Interpreter"). |
 | "Não foi possível usar o Ollama" | Confira se o serviço está no ar (`ollama serve`) e se o modelo foi baixado (`ollama list`; se faltar, `ollama pull llama3`). |
 | "A base de livros ainda não foi indexada" | Rode `python -m rpgassistant.indexar` e reabra o app. |
 | O Assistente recusa perguntas que deveria responder | O limiar está alto demais para os seus livros. Rode `python -m rpgassistant.calibrar` e ajuste `RPG_RELEVANCIA_MINIMA`. |
@@ -248,7 +271,7 @@ Os testes simulam o Ollama, a base vetorial e o Qt, então rodam sem o Ollama, s
 | Respostas muito lentas | Em CPU isso é normal para um modelo de 8 bilhões de parâmetros. Feche outros programas pesados ou tente um modelo menor via `OLLAMA_MODEL`, sabendo que a qualidade em português costuma cair. |
 | A IA ignora as regras do prompt | Veja o "Prompt Tokens" no rodapé da resposta. Se estiver perto do valor de `OLLAMA_NUM_CTX`, o prompt está estourando a janela de contexto. |
 | "Não foi possível abrir o banco de chats" | O arquivo `data/chats.db` está danificado ou é de uma versão mais nova. Renomeie-o para guardar uma cópia e abra o app de novo (ele cria um banco novo). |
-| A instalação do PyTorch ou do PySide6 falha | Use o Python 3.12 e instale o PyTorch para CPU antes das demais dependências (passo 2). |
+| A instalação do PyTorch ou do PySide6 falha | Use o Python 3.12 (veja acima) e instale o PyTorch para CPU antes das demais dependências (passo 2). |
 
 ## ⚠️ Limitações conhecidas
 

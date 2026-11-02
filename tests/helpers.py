@@ -97,11 +97,14 @@ class BuscaFalsa(list):
     def __init__(self, contexto: str, fontes: str, similaridade: Optional[float]) -> None:
         super().__init__()
         self.contexto, self.fontes, self.similaridade, self.base_vazia = contexto, fontes, similaridade, False
+        self.erro: Optional[Exception] = None  # exceção a levantar em toda busca (para simular falhas)
 
     def buscar_contexto(self, query: str, k: Optional[int] = None):
         from rpgassistant.errors import BaseVaziaError
         from rpgassistant.services.rag import ResultadoBusca
         self.append((query, k))
+        if self.erro:
+            raise self.erro
         if self.base_vazia:
             raise BaseVaziaError("A base de livros ainda não foi indexada. Rode: python -m rpgassistant.indexar")
         return ResultadoBusca(self.contexto, self.fontes, self.similaridade, 1)

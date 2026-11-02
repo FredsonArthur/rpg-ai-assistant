@@ -56,6 +56,8 @@ class TurnoThread(QThread):
             self.concluido.emit(turno.concluir())
         except OllamaError as e:
             self.falhou.emit(str(e))
+        except ImportError as e:
+            self.falhou.emit(f"Falta instalar uma biblioteca ({e.name or e}). Rode: pip install -r requirements.txt")
         except Exception as e:  # nunca deixar a thread morrer sem avisar a janela
             logger.exception("Erro inesperado ao processar o turno")
             self.falhou.emit(f"Erro inesperado: {e}")

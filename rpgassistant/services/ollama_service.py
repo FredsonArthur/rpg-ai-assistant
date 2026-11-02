@@ -7,12 +7,21 @@ Verifica se o servidor local do Ollama está no ar e, se não estiver, tenta ini
 import logging
 import socket
 import subprocess
+import sys
 import time
 
 logger = logging.getLogger(__name__)
 
 HOST = "127.0.0.1"
 PORTA = 11434  # porta padrão do Ollama
+
+
+def _opcoes_do_processo() -> dict:
+    """Faz o 'ollama serve' continuar rodando independente do app (e sem abrir uma janela de console no Windows)."""
+    if sys.platform == "win32":
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+        return {"creationflags": 0x00000008 | 0x00000200 | 0x08000000}
+    return {"start_new_session": True}
 
 
 def ollama_ativo(host: str = HOST, porta: int = PORTA, timeout: float = 0.5) -> bool:
@@ -31,12 +40,7 @@ def iniciar_ollama(aguardar: float = 15.0, host: str = HOST, porta: int = PORTA)
         return True
 
     try:
-        subprocess.Popen(
-            ["ollama", "serve"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
-        )
+        subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **_opcoes_do_processo())
     except Exception as e:  # ex.: Ollama não instalado
         logger.warning("Não foi possível iniciar o Ollama automaticamente: %s", e)
         return False

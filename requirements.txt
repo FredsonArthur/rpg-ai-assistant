@@ -1,4 +1,5 @@
 # RPG Tabletop AI Assistant
+# Use o Python 3.10 a 3.13 (recomendado: 3.12). Versões mais novas podem não ter pacotes prontos.
 # Instalação (veja o README): instale o PyTorch para CPU antes, depois rode
 #   pip install -r requirements.txt
 #

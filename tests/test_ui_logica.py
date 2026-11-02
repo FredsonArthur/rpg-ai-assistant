@@ -132,6 +132,14 @@ class AssistenteTest(JanelaBase):
         self.assertIn("Não consigo responder isso", texto(self.bolhas()[-1]))
         self.assertEqual(self.falso.chamadas, [])
 
+    def test_biblioteca_faltando_mostra_como_instalar(self):
+        self.busca.erro = ImportError("No module named 'langchain_chroma'", name="langchain_chroma")
+        self.enviar("Como funciona a condição Agarrado?")
+        self.assertEqual(self.estilos(), ["aviso", "erro"])
+        self.assertIn("langchain_chroma", texto(self.bolhas()[-1]))
+        self.assertIn("pip install -r requirements.txt", texto(self.bolhas()[-1]))
+        self.assertFalse(self.janela.ocupado)
+
     def test_ajuda(self):
         self.enviar("/ajuda")
         self.assertEqual(self.estilos(), ["aviso", "usuario", "ajuda"])

@@ -57,6 +57,20 @@ class OllamaServiceTest(unittest.TestCase):
         with mock.patch.object(svc.subprocess, "Popen", subir_depois):
             self.assertTrue(svc.iniciar_ollama(5, "127.0.0.1", porta))
 
+    def test_processo_destacado_no_linux_e_no_windows(self):
+        with mock.patch.object(svc.sys, "platform", "linux"):
+            self.assertEqual(svc._opcoes_do_processo(), {"start_new_session": True})
+        with mock.patch.object(svc.sys, "platform", "win32"):
+            opcoes = svc._opcoes_do_processo()
+        self.assertEqual(list(opcoes), ["creationflags"])
+        self.assertEqual(opcoes["creationflags"] & 0x08000000, 0x08000000)  # sem janela de console
+
+    def test_popen_recebe_as_opcoes_do_sistema(self):
+        with mock.patch.object(svc.subprocess, "Popen") as popen, mock.patch.object(svc.sys, "platform", "win32"):
+            svc.iniciar_ollama(0.1, "127.0.0.1", porta_livre())
+        self.assertIn("creationflags", popen.call_args.kwargs)
+        self.assertNotIn("start_new_session", popen.call_args.kwargs)
+
     def test_ollama_nao_instalado(self):
         with mock.patch.object(svc.subprocess, "Popen", side_effect=FileNotFoundError("ollama")):
             self.assertFalse(svc.iniciar_ollama(1, "127.0.0.1", porta_livre()))
