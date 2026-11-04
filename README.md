@@ -75,6 +75,7 @@ Para usar outro modo, abra um novo chat. Dentro de um chat existem dois comandos
 ```
 rpg-ai-assistant/
 ├── main.py                     # Abre a janela:  python main.py
+├── instalar.py                 # Instala tudo:  python instalar.py
 ├── requirements.txt
 ├── pyproject.toml              # Metadados do projeto e configuração do ruff
 ├── data/
@@ -135,37 +136,44 @@ ollama pull llama3
 
 ### 2. Baixar o projeto e instalar as dependências
 
-Baixe o repositório (por exemplo, pelo GitHub Desktop em *File → Clone repository*, ou pelo terminal):
+Baixe o repositório (por exemplo, pelo GitHub Desktop em *File → Clone repository*, ou pelo terminal) e **entre na pasta do projeto**, a que contém o arquivo `requirements.txt`:
 
 ```bash
 git clone https://github.com/FredsonArthur/rpg-ai-assistant.git
 cd rpg-ai-assistant
 ```
 
-Crie o ambiente virtual e instale as dependências.
+**Instalação automática (recomendada).** O instalador procura um Python compatível no computador (mesmo que o seu Python padrão seja novo demais), cria o ambiente virtual `venv`, instala as bibliotecas e roda o diagnóstico no final:
 
-**Linux e macOS:**
+```bash
+python instalar.py            # no Windows, se "python" não funcionar:  py instalar.py
+```
+
+Ele funciona de qualquer pasta, desde que você aponte para o arquivo, e se o `venv` já existia mas foi criado com um Python incompatível, ele o recria.
+
+**Instalação manual.** Se preferir fazer à mão, crie o ambiente virtual:
+
+*Linux e macOS:*
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-**Windows (PowerShell ou Prompt de Comando):**
+*Windows (PowerShell ou Prompt de Comando):*
 
 ```bash
 py -3.12 -m venv venv
 venv\Scripts\activate
 ```
 
-(o `py -3.12` escolhe o Python 3.12 mesmo que existam versões mais novas instaladas). Depois, nos dois casos:
+(o `py -3.12` escolhe o Python 3.12 mesmo que existam versões mais novas instaladas; `py -0` lista as versões que você tem). Depois, **sempre de dentro da pasta do projeto**:
 
 ```bash
-# PyTorch só para CPU (evita baixar vários GB de bibliotecas de GPU)
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-
 pip install -r requirements.txt
 ```
+
+No **Linux**, antes desse comando, você pode instalar o PyTorch só para CPU, que evita baixar vários GB de bibliotecas de GPU (opcional): `pip install torch --index-url https://download.pytorch.org/whl/cpu`. No Windows e no macOS isso não é necessário: o pip já instala a versão para CPU.
 
 Para conferir se ficou tudo certo (Python, bibliotecas, livros, Ollama e modelo), rode o diagnóstico:
 
@@ -262,6 +270,8 @@ Os testes simulam o Ollama, a base vetorial e o Qt, então rodam sem o Ollama, s
 | Problema | O que fazer |
 |---|---|
 | "Microsoft Visual C++ 14.0 or greater is required" ao instalar (Windows), ou um pacote "Failed to build" | O seu Python é novo demais (por exemplo, 3.15) e a biblioteca não tem pacote pronto. Instale o Python 3.12, apague a pasta `venv` e refaça o passo 2 com `py -3.12 -m venv venv`. Não é preciso instalar compilador nenhum. |
+| "Could not open requirements file: No such file or directory: 'requirements.txt'" | Você está em outra pasta. Entre na pasta do projeto (`cd rpg-ai-assistant`) antes de rodar o comando, ou use o `instalar.py`, que funciona de qualquer pasta. |
+| O download do PyTorch (`download.pytorch.org`) dá "Connection timed out" | É uma falha de conexão com esse site, e o passo é opcional: no Windows e no macOS ele nem é necessário, e no Linux você pode pular e seguir com o `pip install -r requirements.txt`. |
 | O app fecha logo ao abrir, sem janela (no VSCode aparece "SystemExit: 1") | O programa encerra com código 1 quando o ambiente está incompleto e escreve o motivo no terminal. Rode `python main.py` no terminal, com o ambiente virtual ativado, e leia a mensagem, ou rode `python -m rpgassistant.diagnostico`. No VSCode, confirme o interpretador do ambiente virtual (Ctrl+Shift+P, "Python: Select Interpreter"). |
 | "Não foi possível usar o Ollama" | Confira se o serviço está no ar (`ollama serve`) e se o modelo foi baixado (`ollama list`; se faltar, `ollama pull llama3`). |
 | "A base de livros ainda não foi indexada" | Rode `python -m rpgassistant.indexar` e reabra o app. |
