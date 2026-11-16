@@ -88,6 +88,8 @@ rpg-ai-assistant/
 │   ├── config.py               # Configuração tipada: caminhos, RAG, modelo, limiar e temperaturas
 │   ├── errors.py               # Erros do domínio (OllamaError, BaseVaziaError...)
 │   ├── logs.py                 # Configuração dos logs
+│   ├── ambiente.py             # Confere o Python e as bibliotecas antes de abrir o app
+│   ├── diagnostico.py          # Mostra o estado da instalação:  python -m rpgassistant.diagnostico
 │   ├── indexar.py              # Indexa os livros:  python -m rpgassistant.indexar
 │   ├── calibrar.py             # Calibra o limiar:  python -m rpgassistant.calibrar
 │   ├── core/
@@ -210,10 +212,24 @@ O Assistente recusa perguntas cujo melhor trecho tenha similaridade abaixo de `r
 python -m rpgassistant.calibrar
 ```
 
-O script roda perguntas de dentro e de fora do tema, mostra a similaridade de cada uma e sugere o limiar que melhor separa os dois grupos. Você também pode usar as suas próprias perguntas (uma por linha) com `--dentro arquivo.txt` e `--fora arquivo.txt`. Para aplicar o valor sugerido:
+O script roda perguntas de dentro e de fora do tema, mostra a similaridade de cada uma e sugere o limiar que melhor separa os dois grupos. Você também pode usar as suas próprias perguntas (uma por linha) com `--dentro arquivo.txt` e `--fora arquivo.txt`. Para aplicar o valor sugerido, defina a variável `RPG_RELEVANCIA_MINIMA` ao abrir o app (o 0.35 abaixo é só um exemplo):
+
+*Linux e macOS:*
 
 ```bash
 RPG_RELEVANCIA_MINIMA=0.35 python main.py
+```
+
+*Windows (PowerShell):*
+
+```powershell
+$env:RPG_RELEVANCIA_MINIMA = "0.35"; python main.py
+```
+
+*Windows (Prompt de Comando):*
+
+```bat
+set "RPG_RELEVANCIA_MINIMA=0.35" && python main.py
 ```
 
 (ou troque o padrão `relevancia_minima` em `rpgassistant/config.py`).
@@ -247,9 +263,27 @@ Os parâmetros ficam em `rpgassistant/config.py`. Estes podem ser trocados sem e
 | `RPG_RELEVANCIA_MINIMA` | Limiar de relevância do Assistente (0 a 1; 0 desliga a barreira) | `0.30` |
 | `RPG_DATA_DIR` | Pasta de dados (livros, base vetorial e conversas) | `data/` do projeto |
 
+Exemplo com `OLLAMA_MODEL` (as outras variáveis funcionam do mesmo jeito):
+
+*Linux e macOS:*
+
 ```bash
 OLLAMA_MODEL=llama3.1 python main.py
 ```
+
+*Windows (PowerShell):*
+
+```powershell
+$env:OLLAMA_MODEL = "llama3.1"; python main.py
+```
+
+*Windows (Prompt de Comando):*
+
+```bat
+set "OLLAMA_MODEL=llama3.1" && python main.py
+```
+
+No Linux e no macOS, a variável vale só para essa execução. No Windows, ela vale até você fechar o terminal; para voltar ao padrão, abra um terminal novo.
 
 Mudar `embedding_model`, `chunk_size` ou `chunk_overlap` em `config.py` exige indexar os livros de novo.
 
