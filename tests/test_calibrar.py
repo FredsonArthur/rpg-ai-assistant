@@ -38,6 +38,22 @@ class SugerirLimiarTest(unittest.TestCase):
             self.assertEqual(calibrar.ler_perguntas(arquivo), ["Como funciona agarrar?", "Qual o dano de queda?"])
 
 
+class ComandosParaAplicarTest(unittest.TestCase):
+    """O comando que o script sugere precisa funcionar em cada terminal."""
+
+    def test_um_comando_para_cada_terminal(self):
+        comandos = dict(calibrar.comandos_para_aplicar(0.35))
+        self.assertEqual(set(comandos), {"Linux/macOS", "Windows (PowerShell)", "Windows (cmd)"})
+        self.assertEqual(comandos["Linux/macOS"], "RPG_RELEVANCIA_MINIMA=0.35 python main.py")
+        self.assertEqual(comandos["Windows (PowerShell)"], '$env:RPG_RELEVANCIA_MINIMA = "0.35"; python main.py')
+        # As aspas do cmd evitam um espaço sobrando no valor da variável.
+        self.assertEqual(comandos["Windows (cmd)"], 'set "RPG_RELEVANCIA_MINIMA=0.35" && python main.py')
+
+    def test_o_valor_sempre_tem_duas_casas(self):
+        for _, comando in calibrar.comandos_para_aplicar(0.3):
+            self.assertIn("0.30", comando)
+
+
 class CalibrarTest(BaseTeste):
     def executar(self, buscar, dentro, fora):
         saida = io.StringIO()
@@ -54,6 +70,9 @@ class CalibrarTest(BaseTeste):
         self.assertIn("passa", texto)
         self.assertIn("recusa", texto)
         self.assertIn(f"RPG_RELEVANCIA_MINIMA={sugestao.limiar:.2f}", texto)
+        # O relatório mostra o comando de cada terminal, não só o do Linux/macOS.
+        self.assertIn("Windows (PowerShell)", texto)
+        self.assertIn("Windows (cmd)", texto)
 
     def test_pergunta_sem_trechos_conta_como_zero(self):
         buscar = lambda pergunta: ResultadoBusca("", "", None if pergunta == "f1" else 0.5, 0)
