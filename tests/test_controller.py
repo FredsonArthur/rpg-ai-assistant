@@ -350,13 +350,39 @@ class JogadorTest(ControladorBase):
         chat_id = self.chat_jogador("Roleplay")
         turno = self.c.enviar(chat_id, "Vocês entram numa taverna barulhenta.")
         partes, resp = executar(turno)
-        self.assertEqual((partes, resp.conteudo), ([VALIDA], VALIDA))
+        self.assertGreater(len(partes), 1)  # a fala chega em pedaços, como nos outros modos
+        self.assertEqual(("".join(partes), resp.conteudo), (VALIDA, VALIDA))
         chamada = self.falso.chamadas[-1]
-        self.assertFalse(chamada.get("stream", False))
+        self.assertTrue(chamada["stream"])
         self.assertEqual(chamada["options"]["temperature"], 0.8)
         self.assertIn("Lia. Maga Elfa, Nível 1", chamada["messages"][0]["content"])
         self.assertIn(prompts.ARCHETYPES["Roleplay"], chamada["messages"][0]["content"])
         self.assertEqual(self.rotulos(chat_id)[-2:], [("user", "fala"), ("assistant", "fala")])
+
+    def test_formato_errado_e_refeito_no_streaming(self):
+        """Fala fora do formato: a tela é limpa e a segunda tentativa é a que fica no chat."""
+        respostas = iter([pedacos(["Como assistente, ", "sugiro..."]), pedacos([VALIDA])])
+        self.falso.responder = lambda kw: next(respostas)
+        chat_id = self.chat_jogador()
+        turno = self.c.enviar(chat_id, "Cena")
+        visiveis = []
+        for _ in turno.tokens():
+            visiveis.append(turno.texto_visivel())
+        self.assertIn("", visiveis)  # a tela foi limpa antes da segunda tentativa
+        self.assertEqual(visiveis[-1], VALIDA)
+        resp = turno.concluir()
+        self.assertEqual(resp.conteudo, VALIDA)  # só a segunda tentativa, não as duas juntas
+        self.assertEqual(len(self.falso.chamadas), 2)
+
+    def test_parar_no_meio_da_fala_desfaz_a_pergunta(self):
+        chat_id = self.chat_jogador()
+        antes = self.rotulos(chat_id)
+        turno = self.c.enviar(chat_id, "Cena")
+        iterador = turno.tokens()
+        next(iterador)      # chegou o primeiro pedaço
+        iterador.close()    # é o que a thread da janela faz ao parar
+        turno.cancelar()
+        self.assertEqual(self.rotulos(chat_id), antes)
 
     def test_trocar_de_perfil_vale_no_turno_seguinte(self):
         chat_id = self.chat_jogador("Iniciante")
@@ -409,6 +435,39 @@ class JogadorTest(ControladorBase):
         executar(self.c.enviar(chat_id, "Cena 3"))
         self.assertTrue(all("Pontos Fortes" not in m["content"] for m in self.falso.chamadas[-1]["messages"]))
         self.assertNotIn("/feedback", [m.conteudo for m in self.ger.mensagens(chat_id)])  # o comando não vira mensagem
+
+    def test_feedback_chega_em_pedacos(self):
+        chat_id = self.chat_jogador()
+        executar(self.c.enviar(chat_id, "Cena 1"))
+        executar(self.c.enviar(chat_id, "Cena 2"))
+        partes, resp = executar(self.c.enviar(chat_id, "/feedback"))
+        self.assertGreater(len(partes), 1)
+        self.assertTrue(self.falso.chamadas[-1]["stream"])
+        self.assertEqual(resp.conteudo, FEEDBACK)
+
+    def test_parar_o_feedback_nao_grava_nada(self):
+        chat_id = self.chat_jogador()
+        executar(self.c.enviar(chat_id, "Cena 1"))
+        executar(self.c.enviar(chat_id, "Cena 2"))
+        antes = self.rotulos(chat_id)
+        turno = self.c.enviar(chat_id, "/feedback")
+        iterador = turno.tokens()
+        next(iterador)      # chegou o primeiro pedaço
+        iterador.close()    # é o que a thread da janela faz ao parar
+        turno.cancelar()
+        self.assertEqual(self.rotulos(chat_id), antes)  # o feedback só é gravado em concluir()
+
+    def test_feedback_vazio_e_tratado_como_erro(self):
+        chat_id = self.chat_jogador()
+        executar(self.c.enviar(chat_id, "Cena 1"))
+        executar(self.c.enviar(chat_id, "Cena 2"))
+        antes = self.rotulos(chat_id)
+        self.falso.responder = lambda kw: pedacos([""]) if kw.get("stream") else resposta("")
+        turno = self.c.enviar(chat_id, "/feedback")
+        list(turno.tokens())
+        with self.assertRaises(OllamaError):
+            turno.concluir()
+        self.assertEqual(self.rotulos(chat_id), antes)
 
 
 class ReiniciarOAppTest(BaseTeste):

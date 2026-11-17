@@ -540,11 +540,13 @@ class JanelaPrincipal(QMainWindow):
     def _encerrar_threads(self) -> None:
         """
         Para as threads antes de o banco ser fechado.
-        1. Pede que o turno pare e espera até ESPERA_TURNO_MS. É o caminho normal: o controlador desfaz a
+        1. Pede que o turno pare e espera até ESPERA_TURNO_MS. É o caminho normal: a resposta chega em
+           streaming, então a thread vê o pedido no próximo pedaço de texto, o controlador desfaz a
            pergunta sozinho e a thread termina.
-        2. Se a thread continua presa (no modo Jogador e no feedback a chamada ao modelo é uma só e não dá
-           para interrompê-la no meio), desfaz a pergunta pendente e só então encerra a thread à força. A
-           ordem importa: o desfazer usa o banco, e a thread presa está esperando o modelo, sem usar o banco.
+        2. Se a thread continua presa, é porque o modelo ainda não devolveu o primeiro pedaço de texto
+           (por exemplo, está carregando ou lendo o prompt) e não há como interromper a espera. Nesse caso,
+           desfaz a pergunta pendente e só então encerra a thread à força. A ordem importa: o desfazer usa
+           o banco, e a thread presa está esperando o modelo, sem usar o banco.   # ← mudou
         3. A thread do Ollama não guarda nada, então, se passar do prazo, é encerrada sem mais cuidados.
         """
         pendentes_descartados = False

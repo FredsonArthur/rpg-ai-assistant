@@ -7,7 +7,9 @@ o feedback e salvar tudo no banco. A janela só exibe o que este controlador dev
 
 O resultado de cada ação é um `Turno`. Mensagens que não precisam do modelo (avisos, recusas,
 saudações) já vêm salvas; quando o modelo é necessário, itere `turno.tokens()` (de preferência fora da
-thread da interface) e depois chame `turno.concluir()` para gravar a resposta.
+thread da interface) e depois chame `turno.concluir()` para gravar a resposta. Em todos os modos a
+resposta chega em streaming, então a iteração pode ser interrompida no meio (botão Parar): nesse caso,
+chame `turno.cancelar()` para desfazer a pergunta.
 Depois de `concluir()`, a janela deve recarregar as mensagens do chat: se o modelo recusar a pergunta, a
 pergunta que estava salva é trocada por um aviso.
 """
@@ -63,6 +65,13 @@ class Turno:
                  concluir: Optional[Callable[[str], MensagemChat]] = None,
                  descartar: Optional[Callable[[], None]] = None,
                  visivel: Optional[Callable[[str], str]] = None) -> None:
+        """
+        salvas:    mensagens que o turno já gravou no banco.
+        produzir:  função que devolve os pedaços da resposta (None se o turno não usa o modelo).
+        concluir:  função que recebe o texto acumulado e grava a resposta final.
+        descartar: função que desfaz a pergunta salva (usada se o modelo falhar ou o usuário parar).
+        visivel:   função que recebe o texto acumulado e devolve o que mostrar na tela.
+        """
         self.salvas: List[MensagemChat] = list(salvas or [])
         self._produzir = produzir
         self._concluir = concluir
@@ -73,6 +82,7 @@ class Turno:
 
     @property
     def precisa_modelo(self) -> bool:
+        """True se o turno ainda depende do modelo (há resposta a receber e a gravar)."""
         return self._produzir is not None
 
     def texto_visivel(self) -> str:
@@ -80,6 +90,7 @@ class Turno:
         return self._visivel(self.texto)
 
     def tokens(self) -> Iterator[str]:
+        """Entrega a resposta aos poucos. Se o Ollama falhar no meio, a pergunta é desfeita antes de o erro subir."""
         if self._produzir is None:
             return
         try:
@@ -106,17 +117,21 @@ class Turno:
         return self.resposta
 
     def _desfazer(self) -> None:
+        """Desfaz a pergunta salva, uma única vez (chamar de novo não faz nada)."""
         if self._descartar is not None:
             self._descartar()
             self._descartar = None
 
 
 class ControladorDeChat:
+    """Lógica de todos os chats: recebe o que o usuário faz e devolve um `Turno`."""
+
     def __init__(self, gerenciador: GerenciadorDeChats) -> None:
         self.chats = gerenciador
 
     # ---------- estado do chat ----------
     def fase(self, chat_id: int) -> str:
+        """Em que ponto o chat está: escolher o modo, configurar (cenário ou personagem) ou conversar."""
         chat = self.chats.repositorio.obter_chat(chat_id)
         if chat.modo is None:
             return FASE_ESCOLHER_MODO
@@ -134,6 +149,7 @@ class ControladorDeChat:
 
     # ---------- mensagem do usuário ----------
     def enviar(self, chat_id: int, texto: str) -> Turno:
+        """Trata uma mensagem do usuário de acordo com a fase do chat e o modo, e devolve o turno."""
         texto = texto.strip()
         if not texto:
             raise ValueError("A mensagem está vazia.")
@@ -159,6 +175,7 @@ class ControladorDeChat:
         return self._jogador(chat, texto)
 
     def _comando_de_modo(self, chat: Chat, texto: str, comando: str) -> Turno:
+        """Comandos como /mestre dentro de um chat: o modo não muda, então só explica (ou mostra a ajuda)."""
         novo = {"/assistente": MODO_ASSISTENTE, "/mestre": MODO_MESTRE, "/jogador": MODO_JOGADOR}.get(comando)
         if novo is None:
             return self._local(chat.id, (PAPEL_USUARIO, texto, TIPO_AVISO), (PAPEL_ASSISTENTE, AJUDA_CHAT, TIPO_AJUDA))
@@ -170,6 +187,7 @@ class ControladorDeChat:
         return self._local(chat.id, (PAPEL_USUARIO, texto, TIPO_AVISO), (PAPEL_ASSISTENTE, aviso, TIPO_AVISO))
 
     def _primeira_mensagem(self, chat: Chat, texto: str) -> Turno:
+        """Primeira mensagem de um chat novo: define o modo (ou repete as opções, se não deu para entender)."""
         escolha = escolher_modo(texto)
         if escolha.ajuda:
             return self._local(chat.id, (PAPEL_USUARIO, texto, TIPO_AVISO), (PAPEL_ASSISTENTE, MSG_BOAS_VINDAS, TIPO_AVISO))
@@ -184,6 +202,7 @@ class ControladorDeChat:
 
     # ---------- Assistente: só os livros ----------
     def _assistente(self, chat: Chat, texto: str) -> Turno:
+        """Pergunta de regras: busca nos livros, recusa se não for relevante e, se passar, responde em streaming."""
         historico = self.chats.historico_para_llm(chat.id)
         try:
             consulta = assistente.preparar(texto, historico)
@@ -243,6 +262,7 @@ class ControladorDeChat:
         return Turno(None, stream.tokens, concluir, None, mestre.ocultar_linha_estado)
 
     def _mestre(self, chat: Chat, texto: str) -> Turno:
+        """Ação do jogador na aventura: o Mestre narra a resposta e atualiza o estado de combate."""
         estado = self.chats.estado(chat.id)
         historico = self.chats.historico_para_llm(chat.id)
         usuario = self.chats.registrar(chat.id, PAPEL_USUARIO, texto)
@@ -285,24 +305,32 @@ class ControladorDeChat:
         return self.chats.registrar(chat_id, PAPEL_SISTEMA, f"🔄 Perfil de jogador alterado para {arquetipo}.", TIPO_AVISO)
 
     def _jogador(self, chat: Chat, texto: str) -> Turno:
+        """Narração do usuário (o Mestre): a IA responde como o personagem, em streaming."""
         estado = self.chats.estado(chat.id)
         historico = self.chats.historico_para_llm(chat.id)
         usuario = self.chats.registrar(chat.id, PAPEL_USUARIO, texto)
 
-        def produzir() -> Iterator[str]:
-            # respostas curtas e com formato a conferir: chamada de uma vez, entregue como um único pedaço
-            yield jogador.run_player_simulator_turn(texto, estado[FICHA], historico, estado.get(ARQUETIPO, jogador.ARQUETIPOS_DISPONIVEIS[0]),
-                                                    estado.get(ARQUETIPO_TEXTO, ""))
+        # Só monta o prompt: o modelo é chamado quando a janela começa a consumir `stream.tokens`, e uma
+        # falha nesse momento (OllamaError) desfaz a pergunta, como nos outros modos.
+        stream = jogador.run_player_simulator_turn_stream(
+            texto, estado[FICHA], historico, estado.get(ARQUETIPO, jogador.ARQUETIPOS_DISPONIVEIS[0]),
+            estado.get(ARQUETIPO_TEXTO, ""))
 
-        def concluir(bruto: str) -> MensagemChat:
-            if not bruto.strip():
+        def concluir(_acumulado: str) -> MensagemChat:
+            # A fala vale o `stream.texto`, e não o texto acumulado pelo Turno: se a primeira tentativa vier
+            # fora do formato, o Turno teria as duas tentativas juntas, e o stream guarda só a que vale.
+            fala = stream.texto.strip()
+            if not fala:
                 raise OllamaError("O modelo não devolveu texto. Tente de novo.")
-            return self.chats.registrar(chat.id, PAPEL_ASSISTENTE, bruto.strip())
+            return self.chats.registrar(chat.id, PAPEL_ASSISTENTE, fala)
 
-        return Turno([usuario], produzir, concluir, lambda: self.chats.descartar(usuario))
+        # Pelo mesmo motivo, o que aparece na tela também vem do `stream.texto` (e fica vazio, mostrando
+        # "…", enquanto a segunda tentativa não começa a chegar).
+        return Turno([usuario], stream.tokens, concluir, lambda: self.chats.descartar(usuario),
+                     lambda _acumulado: stream.texto)
 
     def feedback(self, chat_id: int) -> Turno:
-        """UC09: a IA sai do personagem e analisa a condução do Mestre (o usuário)."""
+        """UC09: a IA sai do personagem e analisa a condução do Mestre (o usuário), em streaming."""
         chat = self.chats.repositorio.obter_chat(chat_id)
         if chat.modo != MODO_JOGADOR or self.fase(chat_id) != FASE_CONVERSA:
             return self._local(chat_id, (PAPEL_ASSISTENTE, "O feedback só está disponível no modo Jogador, com um personagem em jogo.", TIPO_AVISO))
@@ -310,13 +338,15 @@ class ControladorDeChat:
         if not jogador.historico_suficiente(historico):
             return self._local(chat_id, (PAPEL_ASSISTENTE, jogador.AVISO_HISTORICO_CURTO, TIPO_AJUDA))
 
-        def produzir() -> Iterator[str]:
-            yield jogador.gerar_feedback(historico)
+        # Não há pergunta salva a desfazer: o feedback só é gravado em `concluir`, então parar ou falhar não deixa rastro.
+        stream = jogador.iniciar_feedback_stream(historico)
 
         def concluir(bruto: str) -> MensagemChat:
+            if not bruto.strip():
+                raise OllamaError("O modelo não devolveu texto. Tente de novo.")
             return self.chats.registrar(chat_id, PAPEL_SISTEMA, bruto.strip(), TIPO_FEEDBACK)
 
-        return Turno(None, produzir, concluir)
+        return Turno(None, stream.tokens, concluir)
 
     # ---------- internos ----------
     def _local(self, chat_id: int, *mensagens: tuple) -> Turno:
@@ -326,6 +356,7 @@ class ControladorDeChat:
         return Turno(salvas)
 
     def _exigir_configuracao(self, chat_id: int, modo: str) -> None:
+        """Garante que o chat está no modo certo e ainda por configurar; senão, levanta o erro adequado."""
         chat = self.chats.repositorio.obter_chat(chat_id)
         if chat.modo != modo:
             raise ModoJaDefinidoError(f"Este chat não está no modo {ROTULOS_MODO[modo]}.")
@@ -334,5 +365,6 @@ class ControladorDeChat:
 
     @staticmethod
     def _validar_arquetipo(arquetipo: str) -> None:
+        """Levanta ValueError se o perfil de jogador não for um dos oferecidos."""
         if arquetipo not in jogador.ARQUETIPOS_DISPONIVEIS:
             raise ValueError(f"Perfil inválido: {arquetipo!r} (use um de {', '.join(jogador.ARQUETIPOS_DISPONIVEIS)}).")
