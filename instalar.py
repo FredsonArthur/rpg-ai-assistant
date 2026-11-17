@@ -7,7 +7,8 @@ Prepara tudo com um comando, em qualquer pasta e em qualquer sistema:
 
 O que ele faz:
 1. Procura um Python compatível (3.10 a 3.13) no computador. Se o Python que você usou para rodar este
-   arquivo for novo demais, ele tenta achar outro sozinho (por exemplo, o 3.12).
+   arquivo for novo demais, ele tenta achar outro sozinho (por exemplo, o 3.12). Se não achar nenhum, mostra
+   como instalar o Python 3.12 no seu sistema (no Linux, o comando da sua distribuição).
 2. Cria (ou recria, se foi feito com um Python incompatível) o ambiente virtual "venv" dentro do projeto.
 3. Instala as bibliotecas de requirements.txt.
 4. Roda o diagnóstico, que mostra o que ainda falta (livros, Ollama, modelo...).
@@ -21,13 +22,15 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 RAIZ = Path(__file__).resolve().parent
 VERSAO_MINIMA = (3, 10)
 VERSAO_MAXIMA = (3, 13)
 PREFERIDAS = ("3.12", "3.13", "3.11", "3.10")
 LINK_PYTHON = "https://www.python.org/downloads/"
+LINK_UV = "https://docs.astral.sh/uv/"
+OS_RELEASE = Path("/etc/os-release")  # arquivo em que as distribuições Linux dizem quem são
 
 Versao = Tuple[int, int]
 Comando = List[str]
@@ -81,6 +84,72 @@ def python_do_venv(raiz: Optional[Path] = None) -> Path:
     return raiz / "venv" / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
 
 
+def ids_da_distribuicao(caminho: Path = OS_RELEASE) -> List[str]:
+    """
+    Identificadores da distribuição Linux, lidos do arquivo os-release: primeiro o ID (por exemplo,
+    "fedora") e depois os ID_LIKE, as famílias a que ela pertence (por exemplo, "rhel centos"). Tudo em
+    minúsculas. Devolve uma lista vazia se o arquivo não existir (macOS, Windows) ou não puder ser lido.
+    """
+    try:
+        texto = caminho.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    valores: Dict[str, str] = {}
+    for linha in texto.splitlines():
+        chave, separador, valor = linha.partition("=")
+        if separador and not chave.startswith("#"):
+            valores[chave.strip()] = valor.strip().strip('"').strip("'")
+    ids = [valores.get("ID", "")] + valores.get("ID_LIKE", "").split()
+    return [i.lower() for i in ids if i]
+
+
+def comando_para_instalar_python(plataforma: str, ids: Sequence[str]) -> Optional[str]:
+    """
+    Comando que instala o Python 3.12 no sistema, ou None se não souber qual é.
+    `plataforma` é o valor de sys.platform e `ids` vem de `ids_da_distribuicao`. No Windows não há comando:
+    o Python é instalado pelo instalador do site oficial.
+    """
+    if plataforma == "darwin":
+        return "brew install python@3.12"
+    if not plataforma.startswith("linux"):
+        return None
+    por_familia = {
+        "fedora": "sudo dnf install python3.12",
+        "rhel": "sudo dnf install python3.12",
+        "centos": "sudo dnf install python3.12",
+        "debian": "sudo apt install python3.12 python3.12-venv",  # no Debian e no Ubuntu, o venv é um pacote à parte
+        "ubuntu": "sudo apt install python3.12 python3.12-venv",
+    }
+    for identificador in ids:
+        if identificador in por_familia:
+            return por_familia[identificador]
+        if identificador == "suse" or identificador.startswith("opensuse"):
+            return "sudo zypper install python312"
+    return None
+
+
+def mensagem_sem_python_compativel(plataforma: str, ids: Sequence[str]) -> List[str]:
+    """Linhas do erro mostrado quando não há Python entre 3.10 e 3.13, com a orientação certa para o sistema."""
+    linhas = [
+        "",
+        "ERRO: não encontrei no computador um Python entre 3.10 e 3.13 (recomendado: 3.12).",
+        "Versões mais novas ainda não têm pacote pronto para todas as bibliotecas e a instalação falha.",
+    ]
+    if plataforma == "win32":
+        linhas.append(f"Instale o Python 3.12 em {LINK_PYTHON} (no Windows, marque \"Add python.exe to PATH\") e rode este arquivo de novo.")
+        return linhas
+
+    comando = comando_para_instalar_python(plataforma, ids)
+    if comando:
+        linhas.append(f"Instale o Python 3.12 com:  {comando}")
+    else:
+        linhas.append(f"Instale o Python 3.12 pelo gerenciador de pacotes do seu sistema ou em {LINK_PYTHON}")
+    linhas.append(f"Se o gerenciador de pacotes não tiver o 3.12, instale-o com o uv ({LINK_UV}) ou com o pyenv.")
+    # O instalador usa primeiro o Python que o executa; rodá-lo com o 3.12 garante a versão certa.
+    linhas.append("Depois, rode o instalador com esse Python (ou use o caminho completo dele):  python3.12 instalar.py")
+    return linhas
+
+
 def executar(comando: Comando, titulo: str, fatal: bool = True) -> bool:
     print(f"\n==> {titulo}")
     print("    " + " ".join(comando))
@@ -90,7 +159,13 @@ def executar(comando: Comando, titulo: str, fatal: bool = True) -> bool:
     return False
 
 
-def main(versao_de: Callable[[Comando], Optional[Versao]] = versao_do_python) -> int:
+def main(versao_de: Callable[[Comando], Optional[Versao]] = versao_do_python,
+         distribuicao: Callable[[], List[str]] = ids_da_distribuicao) -> int:
+    """
+    Roda a instalação inteira e devolve o código de saída (0 se deu certo, 1 se falhou).
+    `versao_de` e `distribuicao` podem ser trocados nos testes: o primeiro diz a versão de cada Python, o
+    segundo diz qual é a distribuição Linux.
+    """
     _utf8()
     print("Instalador do RPG AI Assistant")
     print(f"Pasta do projeto: {RAIZ}")
@@ -101,9 +176,9 @@ def main(versao_de: Callable[[Comando], Optional[Versao]] = versao_do_python) ->
 
     python = escolher_python(candidatos(), versao_de)
     if python is None:
-        print("\nERRO: não encontrei no computador um Python entre 3.10 e 3.13 (recomendado: 3.12).")
-        print("Versões mais novas ainda não têm pacote pronto para todas as bibliotecas e a instalação falha.")
-        print(f"Instale o Python 3.12 em {LINK_PYTHON} (no Windows, marque \"Add python.exe to PATH\") e rode este arquivo de novo.")
+        ids = distribuicao() if sys.platform.startswith("linux") else []
+        for linha in mensagem_sem_python_compativel(sys.platform, ids):
+            print(linha)
         return 1
     versao = versao_de(python)
     print(f"\nPython escolhido: {' '.join(python)} (versão {versao[0]}.{versao[1]})")

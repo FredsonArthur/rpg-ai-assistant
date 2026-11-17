@@ -123,7 +123,7 @@ rpg-ai-assistant/
 
 ### 1. Pré-requisitos
 
-- **Python 3.10 a 3.13 (recomendado: 3.12).** Versões mais novas, como a 3.14 e a 3.15, ainda não têm pacote pronto para todas as bibliotecas, e a instalação falha pedindo um compilador C++ (no Windows, o "Microsoft Visual C++ Build Tools"). Confira a sua versão com `python --version` e, se for mais nova, instale o Python 3.12 antes de continuar (<https://www.python.org/downloads/>; no Windows, marque "Add python.exe to PATH").
+- **Python 3.10 a 3.13 (recomendado: 3.12).** Versões mais novas, como a 3.14 e a 3.15, ainda não têm pacote pronto para todas as bibliotecas, e a instalação falha pedindo um compilador C++ (no Windows, o "Microsoft Visual C++ Build Tools"). Confira a sua versão com `python --version` e, se for mais nova, instale o Python 3.12 antes de continuar. No Windows, use o instalador de <https://www.python.org/downloads/> (marque "Add python.exe to PATH"). No Linux, use o gerenciador de pacotes: `sudo dnf install python3.12` (Fedora), `sudo apt install python3.12 python3.12-venv` (Ubuntu e Debian) ou `sudo zypper install python312` (openSUSE). No macOS, `brew install python@3.12`. Se a sua distribuição não tiver o pacote, o <https://docs.astral.sh/uv/> e o pyenv instalam qualquer versão do Python.
 - **Ollama:** <https://ollama.com>
 - Cerca de **8 GB de RAM** livres e uns 10 GB de disco (modelo, embeddings e dependências). Placa de vídeo não é necessária, mas deixa as respostas mais rápidas.
 
@@ -145,7 +145,7 @@ git clone https://github.com/FredsonArthur/rpg-ai-assistant.git
 cd rpg-ai-assistant
 ```
 
-**Instalação automática (recomendada).** O instalador procura um Python compatível no computador (mesmo que o seu Python padrão seja novo demais), cria o ambiente virtual `venv`, instala as bibliotecas e roda o diagnóstico no final:
+**Instalação automática (recomendada).** O instalador procura um Python compatível no computador (mesmo que o seu Python padrão seja novo demais), cria o ambiente virtual `venv`, instala as bibliotecas e roda o diagnóstico no final. Se não achar um Python compatível, ele diz como instalar o 3.12 no seu sistema:
 
 ```bash
 python instalar.py            # no Windows, se "python" não funcionar:  py instalar.py
@@ -153,12 +153,12 @@ python instalar.py            # no Windows, se "python" não funcionar:  py inst
 
 Ele funciona de qualquer pasta, desde que você aponte para o arquivo, e se o `venv` já existia mas foi criado com um Python incompatível, ele o recria.
 
-**Instalação manual.** Se preferir fazer à mão, crie o ambiente virtual:
+**Instalação manual.** Se preferir fazer à mão, crie o ambiente virtual com o **Python 3.12** (e não com o `python3` padrão do sistema, que pode ser novo demais):
 
 *Linux e macOS:*
 
 ```bash
-python3 -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate
 ```
 
@@ -169,7 +169,7 @@ py -3.12 -m venv venv
 venv\Scripts\activate
 ```
 
-(o `py -3.12` escolhe o Python 3.12 mesmo que existam versões mais novas instaladas; `py -0` lista as versões que você tem). Depois, **sempre de dentro da pasta do projeto**:
+(o `python3.12` e o `py -3.12` escolhem o Python 3.12 mesmo que existam versões mais novas instaladas; no Windows, `py -0` lista as versões que você tem). Depois, **sempre de dentro da pasta do projeto**:
 
 ```bash
 pip install -r requirements.txt
@@ -303,7 +303,8 @@ Os testes simulam o Ollama, a base vetorial e o Qt, então rodam sem o Ollama, s
 
 | Problema | O que fazer |
 |---|---|
-| "Microsoft Visual C++ 14.0 or greater is required" ao instalar (Windows), ou um pacote "Failed to build" | O seu Python é novo demais (por exemplo, 3.15) e a biblioteca não tem pacote pronto. Instale o Python 3.12, apague a pasta `venv` e refaça o passo 2 com `py -3.12 -m venv venv`. Não é preciso instalar compilador nenhum. |
+| "Microsoft Visual C++ 14.0 or greater is required" ao instalar (Windows), ou um pacote "Failed to build" | O seu Python é novo demais (por exemplo, 3.15) e a biblioteca não tem pacote pronto. Instale o Python 3.12, apague a pasta `venv` e refaça o passo 2 (de preferência com o `instalar.py`; à mão, com `py -3.12 -m venv venv` no Windows ou `python3.12 -m venv venv` no Linux e no macOS). Não é preciso instalar compilador nenhum. |
+| O diagnóstico mostra todas as bibliotecas como "NÃO INSTALADO" e o Python 3.14 ou mais novo | O `venv` foi criado com o Python padrão do sistema, que é novo demais (por exemplo, com `python3 -m venv venv`). Apague a pasta `venv` (os livros, a base vetorial e as conversas ficam em `data/` e não são afetados), instale o Python 3.12 (veja o passo 1) e rode `python3 instalar.py`: ele procura o 3.12 sozinho e recria o ambiente. |
 | "Could not open requirements file: No such file or directory: 'requirements.txt'" | Você está em outra pasta. Entre na pasta do projeto (`cd rpg-ai-assistant`) antes de rodar o comando, ou use o `instalar.py`, que funciona de qualquer pasta. |
 | O download do PyTorch (`download.pytorch.org`) dá "Connection timed out" | É uma falha de conexão com esse site, e o passo é opcional: no Windows e no macOS ele nem é necessário, e no Linux você pode pular e seguir com o `pip install -r requirements.txt`. |
 | O app fecha logo ao abrir, sem janela (no VSCode aparece "SystemExit: 1") | O programa encerra com código 1 quando o ambiente está incompleto e escreve o motivo no terminal. Rode `python main.py` no terminal, com o ambiente virtual ativado, e leia a mensagem, ou rode `python -m rpgassistant.diagnostico`. No VSCode, confirme o interpretador do ambiente virtual (Ctrl+Shift+P, "Python: Select Interpreter"). |

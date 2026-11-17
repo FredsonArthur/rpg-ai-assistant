@@ -54,6 +54,64 @@ class CaminhosTest(unittest.TestCase):
             self.assertEqual(instalar.python_do_venv(raiz), raiz / "venv" / "bin" / "python")
 
 
+class DistribuicaoTest(unittest.TestCase):
+    """Descobrir a distribuição Linux e o comando que instala o Python 3.12 nela."""
+
+    def test_le_o_id_e_as_familias_do_os_release(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            arquivo = Path(pasta) / "os-release"
+            arquivo.write_text('NAME="Fedora Linux"\nID=fedora\nID_LIKE="rhel centos"\n# comentário\nVERSION_ID=45\n',
+                               encoding="utf-8")
+            self.assertEqual(instalar.ids_da_distribuicao(arquivo), ["fedora", "rhel", "centos"])
+
+    def test_aceita_aspas_e_maiusculas(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            arquivo = Path(pasta) / "os-release"
+            arquivo.write_text('ID="Ubuntu"\nID_LIKE=debian\n', encoding="utf-8")
+            self.assertEqual(instalar.ids_da_distribuicao(arquivo), ["ubuntu", "debian"])
+
+    def test_arquivo_ausente_devolve_lista_vazia(self):
+        self.assertEqual(instalar.ids_da_distribuicao(Path("/nao/existe/os-release")), [])
+
+    def test_comando_de_instalacao_por_sistema(self):
+        casos = (
+            ("linux", ["fedora"], "sudo dnf install python3.12"),
+            ("linux", ["rocky", "rhel", "centos", "fedora"], "sudo dnf install python3.12"),
+            ("linux", ["ubuntu", "debian"], "sudo apt install python3.12 python3.12-venv"),
+            ("linux", ["opensuse-tumbleweed", "suse", "opensuse"], "sudo zypper install python312"),
+            ("linux", ["arch"], None),     # distribuição que o instalador não conhece
+            ("linux", [], None),           # sem os-release
+            ("darwin", [], "brew install python@3.12"),
+            ("win32", [], None),           # no Windows, o Python vem do site oficial
+        )
+        for plataforma, ids, esperado in casos:
+            with self.subTest(plataforma=plataforma, ids=ids):
+                self.assertEqual(instalar.comando_para_instalar_python(plataforma, ids), esperado)
+
+
+class MensagemSemPythonTest(unittest.TestCase):
+    def texto(self, plataforma, ids=()):
+        return "\n".join(instalar.mensagem_sem_python_compativel(plataforma, ids))
+
+    def test_windows_manda_para_o_site_e_ao_path(self):
+        texto = self.texto("win32")
+        self.assertIn("python.org", texto)
+        self.assertIn("Add python.exe to PATH", texto)
+        self.assertNotIn("instalar.py", texto)
+
+    def test_linux_mostra_o_comando_da_distribuicao(self):
+        texto = self.texto("linux", ["fedora"])
+        self.assertIn("sudo dnf install python3.12", texto)
+        self.assertIn("python3.12 instalar.py", texto)
+        self.assertNotIn("Add python.exe", texto)  # isso é coisa do Windows
+
+    def test_distribuicao_desconhecida_sugere_uv_e_pyenv(self):
+        texto = self.texto("linux", [])
+        self.assertIn("uv", texto)
+        self.assertIn("pyenv", texto)
+        self.assertIn("python3.12 instalar.py", texto)
+
+
 class MainTest(unittest.TestCase):
     def setUp(self):
         pasta = tempfile.TemporaryDirectory()
@@ -65,8 +123,8 @@ class MainTest(unittest.TestCase):
         self.comandos = []
         self.falhas = set()   # trechos de comando que devem falhar
 
-    def rodar(self, plataforma, versoes, candidatos):
-        """Executa main() com um sistema e versões de Python simulados; devolve (código, saída)."""
+    def rodar(self, plataforma, versoes, candidatos, ids=()):
+        """Executa main() com um sistema, versões de Python e distribuição simulados; devolve (código, saída)."""
         def falso(comando, cwd=None, **kwargs):
             self.comandos.append(comando)
             if comando[-2:] == ["venv", "venv"]:  # criar o venv cria o python dele
@@ -80,7 +138,7 @@ class MainTest(unittest.TestCase):
         with mock.patch.object(sys, "platform", plataforma), \
              mock.patch.object(instalar, "candidatos", return_value=candidatos), \
              mock.patch.object(instalar.subprocess, "run", falso), contextlib.redirect_stdout(saida):
-            codigo = instalar.main(lambda c: versoes.get(tuple(c)))
+            codigo = instalar.main(lambda c: versoes.get(tuple(c)), lambda: list(ids))
         return codigo, saida.getvalue()
 
     def comando_com(self, trecho):
@@ -111,6 +169,22 @@ class MainTest(unittest.TestCase):
         self.assertEqual(codigo, 1)
         self.assertIn("python.org", saida)
         self.assertIn("3.12", saida)
+        self.assertEqual(self.comandos, [])
+
+    def test_linux_sem_python_compativel_ensina_o_comando_da_distribuicao(self):
+        """O cenário real: Fedora com só o Python 3.15. Não cria o venv e diz como instalar o 3.12."""
+        codigo, saida = self.rodar("linux", {("atual",): (3, 15)}, [["atual"]], ids=["fedora"])
+        self.assertEqual(codigo, 1)
+        self.assertIn("sudo dnf install python3.12", saida)
+        self.assertIn("python3.12 instalar.py", saida)
+        self.assertNotIn("Add python.exe", saida)
+        self.assertEqual(self.comandos, [])  # nada foi criado nem instalado
+
+    def test_linux_de_distribuicao_desconhecida_sugere_uv_e_pyenv(self):
+        codigo, saida = self.rodar("linux", {("atual",): (3, 15)}, [["atual"]], ids=[])
+        self.assertEqual(codigo, 1)
+        self.assertIn("uv", saida)
+        self.assertIn("pyenv", saida)
         self.assertEqual(self.comandos, [])
 
     def test_linux_tenta_o_pytorch_para_cpu_mas_continua_se_falhar(self):
