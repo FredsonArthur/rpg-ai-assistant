@@ -12,6 +12,9 @@ resposta chega em streaming, então a iteração pode ser interrompida no meio (
 chame `turno.cancelar()` para desfazer a pergunta.
 Depois de `concluir()`, a janela deve recarregar as mensagens do chat: se o modelo recusar a pergunta, a
 pergunta que estava salva é trocada por um aviso.
+
+Comandos: as mensagens que começam com `/` só são comandos se forem um dos COMANDOS_CONHECIDOS ou se
+forem uma palavra só (veja `ler_comando`). Algo como "/me ataca o goblin" é uma mensagem normal.
 """
 
 from __future__ import annotations
@@ -40,10 +43,14 @@ FASE_CONVERSA = "conversa"
 CENARIO, PERSONAGEM, ESTADO_COMBATE = "cenario", "personagem", "estado_combate"
 NOME, FICHA, ARQUETIPO, ARQUETIPO_TEXTO = "nome", "ficha", "arquetipo", "arquetipo_texto"
 
+# Comandos que o chat entende, escritos em minúsculas e sem acento (veja `ler_comando`).
+COMANDOS_CONHECIDOS = ("/ajuda", "/feedback", "/assistente", "/mestre", "/jogador")
+
 AJUDA_CHAT = """**Como usar**
 - Cada chat tem um modo fixo (Assistente, Mestre ou Jogador), escolhido na primeira mensagem. Para usar outro modo, abra um novo chat.
 - `/ajuda`: mostra esta ajuda.
-- `/feedback`: no modo Jogador, a IA sai do personagem e analisa a sua condução como Mestre."""
+- `/feedback`: no modo Jogador, a IA sai do personagem e analisa a sua condução como Mestre.
+- Um texto que começa com `/` seguido de outras palavras, como `/me ataca o goblin`, não é comando: é enviado como mensagem normal."""
 
 _MSG_MODO_ATIVADO = {
     MODO_ASSISTENTE: "Modo **Assistente** ativado. Pergunte sobre regras e lore, ou peça NPCs, encontros e itens. "
@@ -51,6 +58,27 @@ _MSG_MODO_ATIVADO = {
     MODO_MESTRE: "Modo **Mestre** ativado. Escolha o cenário e a sua ficha para eu abrir a aventura.",
     MODO_JOGADOR: "Modo **Jogador** ativado. Defina o personagem que vou interpretar e o perfil de jogador.",
 }
+
+
+def ler_comando(texto: str) -> str:
+    """
+    Diz se `texto` é um comando e devolve a palavra do comando (minúscula e sem acento), ou "" se não for.
+
+    É comando:
+    - um texto que começa com um dos COMANDOS_CONHECIDOS, mesmo com mais palavras depois
+      ("/ajuda por favor" vale como "/ajuda");
+    - um texto de uma palavra só que começa com "/" e não é conhecido (por exemplo, o erro de digitação
+      "/ajud"). Nesse caso o controlador mostra a ajuda, em vez de mandar o texto ao modelo.
+    Não é comando: um texto com várias palavras que começa com "/" e não é um comando conhecido, como
+    "/me ataca o goblin". Em um jogo de RPG, é uma ação como qualquer outra e vai ao modelo.
+    """
+    if not texto.startswith("/"):
+        return ""
+    palavras = normalizar(texto).split()
+    primeira = palavras[0]
+    if primeira in COMANDOS_CONHECIDOS or len(palavras) == 1:
+        return primeira
+    return ""
 
 
 class Turno:
@@ -155,7 +183,7 @@ class ControladorDeChat:
             raise ValueError("A mensagem está vazia.")
         chat = self.chats.repositorio.obter_chat(chat_id)
         fase = self.fase(chat_id)
-        comando = normalizar(texto).split()[0] if texto.startswith("/") else ""
+        comando = ler_comando(texto)  # "" quando a mensagem não é um comando
 
         if comando == "/ajuda":
             return self._local(chat_id, (PAPEL_USUARIO, texto, TIPO_AVISO), (PAPEL_ASSISTENTE, AJUDA_CHAT, TIPO_AJUDA))
