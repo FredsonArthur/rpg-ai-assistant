@@ -200,7 +200,8 @@ def buscar_contexto(query: str, k: Optional[int] = None) -> ResultadoBusca:
     """
     Busca por similaridade semântica nos livros. Devolve os trechos mais relevantes (cada um com o
     rótulo do livro), as fontes e a similaridade do melhor trecho. `k` padrão: top_k_assistente.
-    Levanta BaseVaziaError se os livros ainda não foram indexados.
+    Levanta BaseVaziaError se os livros ainda não foram indexados. Qualquer outra falha (Chroma, modelo
+    de embeddings, disco) também é levantada: quem precisa que a busca nunca falhe usa `recuperar_contexto`.
     """
     k = k if k is not None else config.settings.top_k_assistente
     db = load_vector_store()
@@ -232,13 +233,22 @@ def buscar_contexto(query: str, k: Optional[int] = None) -> ResultadoBusca:
 
 def recuperar_contexto(query: str, k: Optional[int] = None) -> Tuple[str, str]:
     """
-    Como `buscar_contexto`, mas devolve só (contexto, fontes) e nunca levanta erro: sem base, o próprio
-    contexto avisa. Usada pelo Mestre, que não recusa perguntas.
+    Como `buscar_contexto`, mas devolve só (contexto, fontes) e NUNCA levanta erro: se os livros não puderem
+    ser consultados, o próprio contexto avisa e a conversa segue sem trechos de regras. Usada pelo Mestre, que
+    não recusa perguntas e não pode perder um turno por causa da busca.
+    - Base ainda não indexada: o contexto avisa para indexar os livros.
+    - Qualquer outra falha (Chroma, modelo de embeddings, disco): é registrada no log e o contexto avisa que os
+      livros não puderam ser consultados.
     """
     try:
         resultado = buscar_contexto(query, k)
     except BaseVaziaError:
         return "⚠️ Base vetorial não inicializada. Execute a indexação dos manuais.", "Nenhuma fonte"
+    except Exception as e:
+        # Uma falha da busca não pode derrubar o turno: registra (com o traceback) e segue sem trechos.
+        logger.warning("Falha ao consultar os livros; o turno segue sem trechos de regras: %s", e, exc_info=True)
+        return ("⚠️ Os livros não puderam ser consultados agora. Siga a cena sem trechos de regras: se precisar de "
+                "valores de monstros, crie valores simples e coerentes."), "Nenhuma fonte"
     return resultado.contexto, resultado.fontes
 
 
