@@ -1,5 +1,8 @@
 """
-Funções utilitárias compartilhadas entre os módulos.
+Histórico enviado ao modelo
+---------------------------
+Os tipos do histórico (uma lista de mensagens com "role" e "content") e a função que escolhe quais
+mensagens recentes vão ao modelo em cada turno.
 """
 
 from typing import Dict, List
@@ -13,6 +16,10 @@ def janela_historico(chat_history: Historico, tamanho: int) -> Historico:
     Seleciona as mensagens que vão ao modelo: no máximo `tamanho`, sempre preservando a
     primeira (a abertura da cena) e as mais recentes. Assim, uma conversa longa não perde
     o ponto de partida da aventura. O recorte mantém a alternância usuário/assistente.
+
+    Pressupõe que a conversa ABRE com uma fala do assistente (a abertura da cena do Mestre ou a saudação
+    do Jogador). Em uma conversa que abre com o usuário, como a do modo Assistente, o recorte deixaria duas
+    falas do usuário seguidas; por isso o Assistente não usa esta função (veja modes/assistente.py).
     """
     if tamanho <= 0:
         return []

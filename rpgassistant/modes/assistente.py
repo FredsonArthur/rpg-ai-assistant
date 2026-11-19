@@ -57,6 +57,12 @@ def preparar(pergunta: str, historico: Optional[Historico] = None,
                         policy.motivo_da_recusa(resultado.melhor_similaridade, minimo))
 
     mensagens: List[Mensagem] = [{"role": "system", "content": prompt_template.format(context=resultado.contexto)}]
+    # Só as últimas mensagens vão ao modelo. Uma fatia simples basta: o histórico do Assistente abre com uma
+    # pergunta do usuário e é formado só por pares pergunta/resposta (recusas e erros não entram), então as
+    # últimas N mensagens (com history_window par, como o padrão) alternam os papéis e começam pelo usuário.
+    # Não use `janela_historico` aqui: ela foi feita para conversas que abrem com o assistente (Mestre e
+    # Jogador); neste modo deixaria duas falas do usuário seguidas e reenviaria a primeira pergunta da
+    # conversa, que nada tem a ver com a de agora.
     for msg in historico[-config.settings.history_window:]:
         mensagens.append({"role": msg["role"], "content": msg["content"]})
     mensagens.append({"role": "user", "content": pergunta})
