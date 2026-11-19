@@ -9,9 +9,8 @@ O usuário é o Mestre e a IA interpreta um personagem jogador.
   modo NÃO consulta os livros: o personagem só pode saber o que o Mestre descreveu.
 - UC09: feedback pedagógico pós-sessão, em que a IA sai do personagem e vira mentora do Mestre.
 
-A fala do jogador e o feedback chegam em streaming (`run_player_simulator_turn_stream` e
-`iniciar_feedback_stream`), como nos outros modos, para o botão Parar interromper a resposta. As
-versões sem streaming (`run_player_simulator_turn` e `gerar_feedback`) continuam disponíveis.
+A fala do jogador (`run_player_simulator_turn_stream`) e o feedback (`iniciar_feedback_stream`) chegam em
+streaming, como nos outros modos, para o botão Parar poder interromper a resposta.
 """
 
 import re
@@ -77,8 +76,7 @@ def _montar_mensagens(user_input: str, character: str, chat_history: Historico,
                       arquetipo: str, arquetipo_personalizado: str) -> List[Mensagem]:
     """
     Monta as mensagens de um turno do jogador: o prompt do sistema (ficha, perfil e dados sorteados), o
-    histórico recente (preservando a abertura da cena) e, por último, a fala do Mestre. É usada tanto
-    pela versão com streaming quanto pela sem streaming, para as duas montarem exatamente o mesmo prompt.
+    histórico recente (preservando a abertura da cena) e, por último, a fala do Mestre.
     """
     system_prompt = PLAYER_PROMPT.format(
         character=character,
@@ -93,33 +91,6 @@ def _montar_mensagens(user_input: str, character: str, chat_history: Historico,
     return mensagens
 
 
-def run_player_simulator_turn(user_input: str, character: str, chat_history: Historico,
-                              arquetipo: str = "Iniciante", arquetipo_personalizado: str = "") -> str:
-    """
-    Processa um turno do jogador virtual, respondendo à narração do Mestre (user_input).
-    Versão sem streaming: devolve a fala inteira de uma vez (a interface usa a versão com streaming,
-    `run_player_simulator_turn_stream`).
-
-    chat_history: mensagens anteriores, SEM a mensagem atual.
-    O perfil é lido a cada turno, então pode mudar no meio da sessão sem perder o histórico.
-    Se a resposta vier fora do formato [Ação]/[Fala], pede uma segunda tentativa.
-    Levanta OllamaError se a LLM local estiver indisponível.
-    """
-    mensagens = _montar_mensagens(user_input, character, chat_history, arquetipo, arquetipo_personalizado)
-
-    temperatura = config.settings.temperatura_do_arquetipo(arquetipo)
-    resposta = llm.chat_llm(mensagens, temperature=temperatura)['message']['content'].strip()
-
-    if not formato_valido(resposta):
-        mensagens.append({"role": "assistant", "content": resposta})
-        mensagens.append({"role": "user", "content": LEMBRETE_FORMATO})
-        segunda = llm.chat_llm(mensagens, temperature=min(temperatura, 0.4))['message']['content'].strip()
-        if formato_valido(segunda):
-            resposta = segunda
-
-    return resposta
-
-
 class RespostaDoJogadorEmStream:
     """
     Fala do jogador virtual chegando em streaming, com a conferência do formato [Ação]/[Fala] no fim.
@@ -128,8 +99,7 @@ class RespostaDoJogadorEmStream:
     - durante a geração, é o que já chegou da tentativa em curso;
     - se a primeira tentativa vier fora do formato, `tokens()` entrega um pedaço vazio ("") para avisar
       que a tela deve ser limpa, `texto` volta a ficar vazio e a segunda tentativa é transmitida;
-    - se a segunda também vier fora do formato, `texto` volta a ser a primeira fala (como na versão sem
-      streaming, que mantém a primeira).
+    - se a segunda também vier fora do formato, `texto` volta a ser a primeira fala.
     Por isso, quem consome este objeto deve ler `texto`, e não somar os pedaços recebidos.
     Falhas de comunicação com o Ollama levantam OllamaError durante a iteração.
     """
@@ -168,10 +138,12 @@ def run_player_simulator_turn_stream(user_input: str, character: str, chat_histo
                                      arquetipo: str = "Iniciante",
                                      arquetipo_personalizado: str = "") -> RespostaDoJogadorEmStream:
     """
-    Como `run_player_simulator_turn`, mas a fala chega em streaming (veja RespostaDoJogadorEmStream),
-    o que permite interromper a geração no meio (botão Parar).
+    Processa um turno do jogador virtual, respondendo à narração do Mestre (user_input). A fala chega em
+    streaming (veja RespostaDoJogadorEmStream), o que permite interrompê-la no meio (botão Parar).
 
     chat_history: mensagens anteriores, SEM a mensagem atual.
+    O perfil é lido a cada turno, então pode mudar no meio da sessão sem perder o histórico.
+    Se a resposta vier fora do formato [Ação]/[Fala], pede uma segunda tentativa.
     Só monta o prompt: o modelo é chamado quando `tokens()` começa a ser iterado, e é nesse momento
     que um OllamaError pode ser levantado.
     """
@@ -196,35 +168,17 @@ def formatar_historico(chat_history: Historico, limite: int = LIMITE_HISTORICO_F
     return texto
 
 
-def _mensagens_do_feedback(chat_history: Historico) -> List[Mensagem]:
-    """Mensagens do pedido de feedback: o prompt do mentor, com o histórico da sessão, e a instrução final."""
-    return [
+def iniciar_feedback_stream(chat_history: Historico) -> llm.RespostaEmStream:
+    """
+    UC09: a IA sai do personagem e analisa a condução do Mestre (o usuário). O feedback chega em
+    streaming, para a interface mostrá-lo enquanto é escrito e permitir interromper (botão Parar).
+    O feedback NÃO entra no histórico da sessão, então o jogo continua de onde parou (FA02).
+    Não confere o tamanho do histórico: quem chama deve usar `historico_suficiente` antes (o controlador
+    já faz isso e mostra `AVISO_HISTORICO_CURTO` quando a sessão ainda está curta, FA01).
+    Levanta OllamaError se a LLM local estiver indisponível.
+    """
+    mensagens: List[Mensagem] = [
         {"role": "system", "content": FEEDBACK_PROMPT.format(history=formatar_historico(chat_history))},
         {"role": "user", "content": "Gere o feedback da sessão, seguindo as 3 partes."}
     ]
-
-
-def gerar_feedback(chat_history: Historico) -> str:
-    """
-    UC09: a IA sai do personagem e analisa a condução do Mestre (o usuário).
-    Versão sem streaming (a interface usa `iniciar_feedback_stream`).
-    Com histórico curto demais, devolve um aviso em vez de chamar o modelo (FA01).
-    O feedback NÃO entra no histórico da sessão, então o jogo continua de onde parou (FA02).
-    Levanta OllamaError se a LLM local estiver indisponível.
-    """
-    if not historico_suficiente(chat_history):
-        return AVISO_HISTORICO_CURTO
-
-    messages = _mensagens_do_feedback(chat_history)
-    return llm.chat_llm(messages, temperature=config.settings.temperatura_feedback)['message']['content'].strip()
-
-
-def iniciar_feedback_stream(chat_history: Historico) -> llm.RespostaEmStream:
-    """
-    UC09 com streaming: devolve o feedback chegando aos poucos, para a interface mostrá-lo enquanto é
-    escrito e permitir interromper (botão Parar).
-    Não confere o tamanho do histórico: quem chama deve usar `historico_suficiente` antes (o controlador
-    já faz isso e mostra `AVISO_HISTORICO_CURTO` quando a sessão ainda está curta).
-    Levanta OllamaError se a LLM local estiver indisponível.
-    """
-    return llm.chat_llm_stream(_mensagens_do_feedback(chat_history), temperature=config.settings.temperatura_feedback)
+    return llm.chat_llm_stream(mensagens, temperature=config.settings.temperatura_feedback)
