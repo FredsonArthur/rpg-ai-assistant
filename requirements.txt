@@ -3,9 +3,8 @@
 # Instalação (veja o README): instale o PyTorch para CPU antes, depois rode
 #   pip install -r requirements.txt
 #
-# Os números abaixo são versões mínimas. Depois de confirmar que tudo funciona na sua máquina,
-# gere uma lista exata para reproduzir o ambiente:
-#   pip freeze > requirements-lock.txt
+# Os números abaixo são versões MÍNIMAS: o pip instala as mais novas que encontrar. Para reproduzir
+# exatamente o ambiente em que o projeto foi testado, use o requirements-lock.txt (versões exatas).
 
 # Interface
 PySide6>=6.6.0
