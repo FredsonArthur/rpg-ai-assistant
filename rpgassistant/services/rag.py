@@ -196,12 +196,21 @@ def _espaco_da_base(db: Any) -> str:
         return "l2"
 
 
-def buscar_contexto(query: str, k: Optional[int] = None) -> ResultadoBusca:
+@dataclass(frozen=True)
+class Trecho:
+    """Um trecho de livro devolvido pela busca, com o quanto ele se parece com a pergunta."""
+
+    texto: str
+    fonte: str            # rótulo do livro, com a página quando houver (ex.: "Core | Player's Handbook - pág. 12")
+    similaridade: float   # de 0 a 1
+
+
+def buscar_trechos(query: str, k: Optional[int] = None) -> List[Trecho]:
     """
-    Busca por similaridade semântica nos livros. Devolve os trechos mais relevantes (cada um com o
-    rótulo do livro), as fontes e a similaridade do melhor trecho. `k` padrão: top_k_assistente.
+    Busca por similaridade semântica nos livros e devolve os `k` trechos mais parecidos com `query`, do mais
+    para o menos parecido (lista vazia se nada for encontrado). `k` padrão: top_k_assistente.
     Levanta BaseVaziaError se os livros ainda não foram indexados. Qualquer outra falha (Chroma, modelo
-    de embeddings, disco) também é levantada: quem precisa que a busca nunca falhe usa `recuperar_contexto`.
+    de embeddings, disco) também é levantada.
     """
     k = k if k is not None else config.settings.top_k_assistente
     db = load_vector_store()
@@ -210,25 +219,38 @@ def buscar_contexto(query: str, k: Optional[int] = None) -> ResultadoBusca:
 
     pares = db.similarity_search_with_score(query, k=k)
     if not pares:
-        return ResultadoBusca("Nenhum trecho relevante encontrado.", "Desconhecido", None, 0)
+        return []
 
     espaco = _espaco_da_base(db)
-    context_chunks: List[str] = []
-    fontes_encontradas: List[str] = []  # lista (e não set) para manter a ordem de relevância
-    melhor = max(distancia_para_similaridade(distancia, espaco) for _, distancia in pares)
-
-    for doc, _ in pares:
+    trechos: List[Trecho] = []
+    for doc, distancia in pares:
         rotulo = rotulo_fonte(doc.metadata.get('source', ''))
         page = doc.metadata.get('page')  # só existe em PDFs; a página 0 também conta
         if page is not None:
             rotulo += f" - pág. {page + 1}"
+        trechos.append(Trecho(doc.page_content.strip(), rotulo, distancia_para_similaridade(distancia, espaco)))
+    return trechos
 
-        if rotulo not in fontes_encontradas:
-            fontes_encontradas.append(rotulo)
 
-        context_chunks.append(f"📖 [Fonte: {rotulo}]\n{doc.page_content.strip()}")
+def buscar_contexto(query: str, k: Optional[int] = None) -> ResultadoBusca:
+    """
+    Busca por similaridade semântica nos livros. Devolve os trechos mais relevantes (cada um com o
+    rótulo do livro), as fontes e a similaridade do melhor trecho. `k` padrão: top_k_assistente.
+    Levanta BaseVaziaError se os livros ainda não foram indexados. Qualquer outra falha (Chroma, modelo
+    de embeddings, disco) também é levantada: quem precisa que a busca nunca falhe usa `recuperar_contexto`.
+    """
+    trechos = buscar_trechos(query, k)
+    if not trechos:
+        return ResultadoBusca("Nenhum trecho relevante encontrado.", "Desconhecido", None, 0)
 
-    return ResultadoBusca("\n\n---\n\n".join(context_chunks), ", ".join(fontes_encontradas), melhor, len(pares))
+    fontes_encontradas: List[str] = []  # lista (e não set) para manter a ordem de relevância
+    for trecho in trechos:
+        if trecho.fonte not in fontes_encontradas:
+            fontes_encontradas.append(trecho.fonte)
+
+    contexto = "\n\n---\n\n".join(f"📖 [Fonte: {trecho.fonte}]\n{trecho.texto}" for trecho in trechos)
+    melhor = max(trecho.similaridade for trecho in trechos)
+    return ResultadoBusca(contexto, ", ".join(fontes_encontradas), melhor, len(trechos))
 
 
 def recuperar_contexto(query: str, k: Optional[int] = None) -> Tuple[str, str]:

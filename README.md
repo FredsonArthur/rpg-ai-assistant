@@ -76,7 +76,8 @@ Para usar outro modo, abra um novo chat. Dentro de um chat existem dois comandos
 rpg-ai-assistant/
 ├── main.py                     # Abre a janela:  python main.py
 ├── instalar.py                 # Instala tudo:  python instalar.py
-├── requirements.txt
+├── requirements.txt            # Bibliotecas, com versões mínimas
+├── requirements-lock.txt       # Versões exatas do ambiente de referência (veja o passo 2)
 ├── pyproject.toml              # Metadados do projeto e configuração do ruff
 ├── data/
 │   ├── rulebooks/              # Seus livros (.md ou .pdf)
@@ -92,6 +93,7 @@ rpg-ai-assistant/
 │   ├── diagnostico.py          # Mostra o estado da instalação:  python -m rpgassistant.diagnostico
 │   ├── indexar.py              # Indexa os livros:  python -m rpgassistant.indexar
 │   ├── calibrar.py             # Calibra o limiar:  python -m rpgassistant.calibrar
+│   ├── avaliar_recuperacao.py  # Mede a qualidade da busca:  python -m rpgassistant.avaliar_recuperacao
 │   ├── core/
 │   │   ├── controller.py       # Lógica de cada chat nos três modos
 │   │   ├── chats.py            # Criar, abrir, renomear, excluir e restaurar chats
@@ -177,6 +179,8 @@ pip install -r requirements.txt
 
 No **Linux**, antes desse comando, você pode instalar o PyTorch só para CPU, que evita baixar vários GB de bibliotecas de GPU (opcional): `pip install torch --index-url https://download.pytorch.org/whl/cpu`. No Windows e no macOS isso não é necessário: o pip já instala a versão para CPU.
 
+**Reproduzir o ambiente exato (opcional).** O `requirements.txt` pede só versões mínimas, então o pip instala as mais novas que encontrar. Para usar exatamente as versões com que o projeto foi testado (conferidas só no Linux), instale o PyTorch como descrito acima e depois rode `pip install -r requirements-lock.txt` no lugar do `requirements.txt`. As instruções completas estão no cabeçalho desse arquivo.
+
 Para conferir se ficou tudo certo (Python, bibliotecas, livros, Ollama e modelo), rode o diagnóstico:
 
 ```bash
@@ -234,7 +238,25 @@ set "RPG_RELEVANCIA_MINIMA=0.35" && python main.py
 
 (ou troque o padrão `relevancia_minima` em `rpgassistant/config.py`).
 
-### 6. Abrir o app
+### 6. Medir a qualidade da busca (opcional)
+
+Para saber se a busca encontra o trecho certo nos seus livros, rode:
+
+```bash
+python -m rpgassistant.avaliar_recuperacao
+```
+
+O script faz perguntas de exemplo à base, confere se os trechos encontrados trazem os termos esperados e mostra em que posição o primeiro acerto apareceu (1 é o melhor). No fim, resume os acertos em 1º lugar, entre os 3 primeiros e entre os `k` primeiros, e o MRR (média de 1/posição). Para cada pergunta que falha, mostra o trecho mais parecido que a busca encontrou, para você ver se foi a busca que errou ou se o termo esperado simplesmente não existe no seu livro.
+
+As perguntas de exemplo foram escritas pensando em livros de D&D 5e em inglês, e os termos precisam existir nos seus livros. Para usar as suas, crie um arquivo de texto com uma pergunta por linha, no formato `pergunta | termo 1 ; termo 2 | livro (opcional)`, e rode:
+
+```bash
+python -m rpgassistant.avaliar_recuperacao --perguntas minhas_perguntas.txt --k 5
+```
+
+Exemplo de linha: `Quanto tempo dura um descanso longo? | at least 8 hours ; pelo menos 8 horas | Player's Handbook`. Linhas vazias e as que começam com `#` são ignoradas. Se muitas perguntas falharem com um trecho de outro assunto, vale testar outros valores de `chunk_size` e `chunk_overlap` em `rpgassistant/config.py` (depois de mudar, indexe os livros de novo e meça outra vez).
+
+### 7. Abrir o app
 
 ```bash
 python main.py
@@ -322,7 +344,7 @@ Os testes simulam o Ollama, a base vetorial e o Qt, então rodam sem o Ollama, s
 
 - A qualidade depende do Llama 3 de 8B: ele pode errar regras ou contas. Por isso o Assistente mostra as fontes, para você conferir.
 - O Assistente só responde o que os livros indexados cobrem; uma pergunta de RPG que não esteja neles também é recusada.
-- O limiar de relevância precisa ser calibrado com os seus livros, e o tamanho dos trechos usados na busca ainda não foi validado com testes de recuperação. A citação indica o livro, ainda não a seção.
+- O limiar de relevância precisa ser calibrado com os seus livros (passo 5), e o tamanho dos trechos (`chunk_size`) é um valor inicial: use `python -m rpgassistant.avaliar_recuperacao` (passo 6) para medir se a busca encontra o trecho certo nos seus livros. A citação indica o livro (e a página, nos PDFs), ainda não a seção.
 - O dado do Mestre é sorteado em Python, mas a conta de dano e de PV ainda é feita pelo modelo. O estado do combate também depende de o modelo escrever a linha `[ESTADO]`.
 - A ficha do personagem é um texto livre, interpretado pelo modelo.
 - Cada chat tem um modo fixo; para trocar, abra outro chat.
