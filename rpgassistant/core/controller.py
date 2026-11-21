@@ -15,11 +15,15 @@ pergunta que estava salva é trocada por um aviso.
 
 Comandos: as mensagens que começam com `/` só são comandos se forem um dos COMANDOS_CONHECIDOS ou se
 forem uma palavra só (veja `ler_comando`). Algo como "/me ataca o goblin" é uma mensagem normal.
+
+Falhas: se algo der errado depois de a pergunta do usuário ser salva (e antes de a resposta chegar), a pergunta
+é desfeita e o erro continua subindo (veja `_desfazer_pergunta_se_falhar`), para ela não ficar solta no chat.
 """
 
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from typing import Callable, Iterator, List, Optional
 
 from rpgassistant.core import policy
@@ -30,7 +34,9 @@ from rpgassistant.core.models import (
     Chat, MensagemChat,
 )
 from rpgassistant.core.modos import MODO_ASSISTENTE, MODO_JOGADOR, MODO_MESTRE, ROTULOS_MODO, normalizar
-from rpgassistant.errors import BaseVaziaError, ModoJaDefinidoError, OllamaError
+from rpgassistant.errors import (
+    BaseVaziaError, BuscaNosLivrosError, ModoJaDefinidoError, OllamaError, RPGAssistantError,
+)
 from rpgassistant.modes import assistente, jogador, mestre
 
 logger = logging.getLogger(__name__)
@@ -236,17 +242,24 @@ class ControladorDeChat:
             consulta = assistente.preparar(texto, historico)
         except BaseVaziaError as e:
             return self._local(chat.id, (PAPEL_USUARIO, texto, TIPO_AVISO), (PAPEL_ASSISTENTE, str(e), TIPO_AVISO))
+        except RPGAssistantError:
+            raise  # os erros do próprio app já trazem uma mensagem pronta para o usuário
+        except Exception as e:
+            # Falha técnica da busca (Chroma, modelo de embeddings, disco): guarda o detalhe no log e mostra
+            # uma mensagem clara, em vez de "Erro inesperado". Nada foi salvo ainda, então não há o que desfazer.
+            logger.warning("Falha ao consultar os livros para o Assistente: %s", e, exc_info=True)
+            raise BuscaNosLivrosError(
+                f"Não consegui consultar os livros agora ({type(e).__name__}: {e}). "
+                "Confira a instalação com: python -m rpgassistant.diagnostico"
+            ) from e
 
         self.chats.titulo_automatico(chat.id, texto)
         if consulta.recusada:
             return self._recusa(chat.id, texto, {"recusada": True, "metricas": consulta.motivo_recusa})
 
         usuario = self.chats.registrar(chat.id, PAPEL_USUARIO, texto)
-        try:
+        with self._desfazer_pergunta_se_falhar(usuario):
             stream = assistente.iniciar_stream(consulta)
-        except OllamaError:
-            self.chats.descartar(usuario)
-            raise
 
         def concluir(bruto: str) -> MensagemChat:
             if not bruto.strip():
@@ -294,12 +307,9 @@ class ControladorDeChat:
         estado = self.chats.estado(chat.id)
         historico = self.chats.historico_para_llm(chat.id)
         usuario = self.chats.registrar(chat.id, PAPEL_USUARIO, texto)
-        try:
+        with self._desfazer_pergunta_se_falhar(usuario):
             stream, fontes = mestre.run_master_turn_stream(
                 texto, estado[CENARIO], estado[PERSONAGEM], historico, estado.get(ESTADO_COMBATE, ""))
-        except OllamaError:
-            self.chats.descartar(usuario)
-            raise
 
         def concluir(bruto: str) -> MensagemChat:
             fala, novo_estado = mestre.extrair_estado(bruto, estado.get(ESTADO_COMBATE, ""))
@@ -340,9 +350,10 @@ class ControladorDeChat:
 
         # Só monta o prompt: o modelo é chamado quando a janela começa a consumir `stream.tokens`, e uma
         # falha nesse momento (OllamaError) desfaz a pergunta, como nos outros modos.
-        stream = jogador.run_player_simulator_turn_stream(
-            texto, estado[FICHA], historico, estado.get(ARQUETIPO, jogador.ARQUETIPOS_DISPONIVEIS[0]),
-            estado.get(ARQUETIPO_TEXTO, ""))
+        with self._desfazer_pergunta_se_falhar(usuario):
+            stream = jogador.run_player_simulator_turn_stream(
+                texto, estado[FICHA], historico, estado.get(ARQUETIPO, jogador.ARQUETIPOS_DISPONIVEIS[0]),
+                estado.get(ARQUETIPO_TEXTO, ""))
 
         def concluir(_acumulado: str) -> MensagemChat:
             # A fala vale o `stream.texto`, e não o texto acumulado pelo Turno: se a primeira tentativa vier
@@ -377,6 +388,19 @@ class ControladorDeChat:
         return Turno(None, stream.tokens, concluir)
 
     # ---------- internos ----------
+    @contextmanager
+    def _desfazer_pergunta_se_falhar(self, usuario: MensagemChat) -> Iterator[None]:
+        """
+        Para usar em volta do código que monta o turno DEPOIS de a pergunta do usuário ser salva. Se qualquer
+        erro acontecer ali, a pergunta é desfeita (para não ficar solta no chat, sem resposta) e o erro
+        continua subindo para a janela mostrar.
+        """
+        try:
+            yield
+        except Exception:
+            self.chats.descartar(usuario)
+            raise
+
     def _local(self, chat_id: int, *mensagens: tuple) -> Turno:
         """Turno sem modelo: grava as mensagens (papel, texto, tipo[, extras]) e as devolve."""
         salvas = [self.chats.registrar(chat_id, papel, texto, tipo, (resto[0] if resto else None))

@@ -17,6 +17,10 @@ class BaseVaziaError(RPGAssistantError):
     """A base vetorial ainda não existe: os livros precisam ser indexados."""
 
 
+class BuscaNosLivrosError(RPGAssistantError):
+    """A busca nos livros falhou por um problema técnico (base vetorial, modelo de embeddings, disco)."""
+
+
 class ChatNaoEncontrado(RPGAssistantError):
     """O chat pedido não existe (por exemplo, foi excluído)."""
 
