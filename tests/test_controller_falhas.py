@@ -49,6 +49,13 @@ class FalhaNaBuscaDoAssistenteTest(ControladorBase):
         self.assertIsInstance(contexto.exception.__cause__, RuntimeError)  # o erro original fica encadeado
         self.assertEqual(self.rotulos(chat_id), antes)  # nada foi salvo
 
+    def test_biblioteca_faltando_nao_e_embrulhada(self):
+        """ImportError segue como está: a janela mostra o comando "pip install -r requirements.txt"."""
+        chat_id = self.novo_chat("1")
+        self.busca.erro = ImportError("No module named 'langchain_chroma'", name="langchain_chroma")
+        with self.assertRaises(ImportError):
+            self.c.enviar(chat_id, "Como funciona a condição Agarrado?")
+
     def test_e_um_erro_do_dominio(self):
         """A janela mostra a mensagem dos erros do domínio como está, sem "Erro inesperado"."""
         self.assertTrue(issubclass(BuscaNosLivrosError, RPGAssistantError))

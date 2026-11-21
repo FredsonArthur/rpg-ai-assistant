@@ -244,6 +244,8 @@ class ControladorDeChat:
             return self._local(chat.id, (PAPEL_USUARIO, texto, TIPO_AVISO), (PAPEL_ASSISTENTE, str(e), TIPO_AVISO))
         except RPGAssistantError:
             raise  # os erros do próprio app já trazem uma mensagem pronta para o usuário
+        except ImportError:
+            raise  # biblioteca não instalada: a janela mostra o comando "pip install -r requirements.txt"
         except Exception as e:
             # Falha técnica da busca (Chroma, modelo de embeddings, disco): guarda o detalhe no log e mostra
             # uma mensagem clara, em vez de "Erro inesperado". Nada foi salvo ainda, então não há o que desfazer.
