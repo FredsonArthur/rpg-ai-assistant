@@ -60,9 +60,11 @@ class Config:
 
     # RAG. ATENÇÃO: mudar embedding_model, chunk_size ou chunk_overlap deixa a base vetorial antiga
     # incompatível; depois de mudar qualquer um deles, rode a indexação de novo (python -m rpgassistant.indexar).
-    # Valores iniciais, ainda não validados com testes de recuperação.
-    chunk_size: int = 1500          # tamanho do trecho, em caracteres
-    chunk_overlap: int = 300        # sobreposição entre trechos vizinhos, em caracteres
+    # O modelo de embeddings lê só os primeiros 128 tokens (cerca de 500 caracteres) de cada trecho: o que passa
+    # disso não influi na busca. Por isso o trecho tem 500 caracteres. Medido com
+    # python -m rpgassistant.avaliar_recuperacao, o MRR subiu de 0.16 (trechos de 1500) para 0.41 (de 500).
+    chunk_size: int = 500           # tamanho do trecho, em caracteres
+    chunk_overlap: int = 100        # sobreposição entre trechos vizinhos, em caracteres
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     top_k_assistente: int = 8       # trechos recuperados para o Assistente
     top_k_mestre: int = 3           # trechos recuperados para o Mestre

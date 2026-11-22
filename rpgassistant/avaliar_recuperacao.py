@@ -7,8 +7,10 @@ descobrir as perguntas que a busca erra.
 
 Como funciona: para cada pergunta, a busca traz os `k` trechos mais parecidos. Um trecho "acerta" se
 contiver pelo menos um dos termos esperados (sem diferenciar maiúsculas, acentos nem quebras de linha, e
-só como palavra inteira) e, se a pergunta indicar um livro, se vier desse livro. O relatório mostra em que
-posição o primeiro acerto apareceu (1 é o melhor) e resume os números.
+começando em uma palavra: "Rage" vale em "Rages", mas não em "average") e, se a pergunta indicar um livro,
+se vier desse livro. O relatório mostra em que
+posição o primeiro acerto apareceu (1 é o melhor), de que livro veio o trecho que acertou e resume
+os números.
 
 Uso:
     python -m rpgassistant.avaliar_recuperacao
@@ -58,7 +60,8 @@ PERGUNTAS_DE_EXEMPLO = [
     Pergunta("O que é vantagem em um teste?", ("two d20", "second d20", "dois d20", "segundo d20")),
     Pergunta("Como funciona o ataque de oportunidade?",
              ("leaves your reach", "moves out of your reach", "sai do seu alcance")),
-    Pergunta("O que é uma salvaguarda contra morte?", ("three successes", "3 successes", "três sucessos")),
+    Pergunta("O que é uma salvaguarda contra morte?",
+             ("turn with 0 Hit Points", "three successes", "3 successes", "três sucessos")),
     Pergunta("Qual o dano de uma queda?", ("every 10 feet", "10 feet you fall", "cada 10 pés", "cada 3 metros")),
     Pergunta("Como funciona a iniciativa?",
              ("roll Initiative", "rolls Initiative", "role iniciativa", "rolar iniciativa")),
@@ -79,6 +82,7 @@ class Resultado:
     posicao: Optional[int]                 # posição (1 = melhor) do primeiro trecho que acertou; None se nenhum acertou
     melhor_similaridade: Optional[float]   # similaridade do trecho mais parecido (None se a busca não trouxe nada)
     primeiro_trecho: Optional[Trecho]      # o trecho mais parecido, para ajudar a entender as falhas
+    trecho_acertado: Optional[Trecho] = None   # o trecho que acertou (mostra de que livro veio); None se falhou
 
 
 @dataclass(frozen=True)
@@ -99,9 +103,12 @@ def _limpar(texto: str) -> str:
 
 
 def _contem_termo(texto_limpo: str, termo: str) -> bool:
-    """O termo aparece no texto como palavra inteira? ("Rage" não conta dentro de "average".)"""
+    """
+    O termo aparece no texto, começando no início de uma palavra? "Rage" vale em "Rages", mas não em "average"
+    nem em "courage"; "two d20" vale em "two d20s". Só o início é conferido, para não perder plurais e flexões.
+    """
     termo_limpo = _limpar(termo)
-    return bool(termo_limpo) and re.search(rf"(?<!\w){re.escape(termo_limpo)}(?!\w)", texto_limpo) is not None
+    return bool(termo_limpo) and re.search(rf"(?<!\w){re.escape(termo_limpo)}", texto_limpo) is not None
 
 
 def trecho_confere(trecho: Trecho, pergunta: Pergunta) -> bool:
@@ -147,7 +154,8 @@ def avaliar(perguntas: Sequence[Pergunta], k: int,
         trechos = buscar(pergunta.texto, k)
         posicao = next((i for i, trecho in enumerate(trechos, start=1) if trecho_confere(trecho, pergunta)), None)
         melhor = max((trecho.similaridade for trecho in trechos), default=None)
-        resultados.append(Resultado(pergunta, posicao, melhor, trechos[0] if trechos else None))
+        resultados.append(Resultado(pergunta, posicao, melhor, trechos[0] if trechos else None,
+                                    trechos[posicao - 1] if posicao else None))
     return resultados
 
 
@@ -175,7 +183,8 @@ def imprimir_relatorio(resultados: Sequence[Resultado], resumo: Resumo) -> None:
     for resultado in resultados:
         posicao = f"#{resultado.posicao}" if resultado.posicao else "falhou"
         similaridade = f"{resultado.melhor_similaridade:.2f}" if resultado.melhor_similaridade is not None else "--"
-        print(f"  {posicao:<7} {similaridade:>5}  {resultado.pergunta.texto}")
+        livro = f"  [{resultado.trecho_acertado.fonte}]" if resultado.trecho_acertado else ""
+        print(f"  {posicao:<7} {similaridade:>5}  {resultado.pergunta.texto}{livro}")
 
     falhas = [r for r in resultados if r.posicao is None]
     if falhas:

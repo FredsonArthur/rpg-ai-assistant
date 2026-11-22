@@ -1,0 +1,13 @@
+# Mesmas perguntas, em inglês, para testar se o idioma da pergunta atrapalha a busca
+How does the Grappled condition work? | Grappled
+How long does a long rest last? | at least 8 hours ; 8 hours long
+What is advantage on a roll? | two d20 ; second d20
+How do opportunity attacks work? | leaves your reach ; moves out of your reach
+What is a death saving throw? | turn with 0 Hit Points ; three successes ; 3 successes
+How much damage does falling deal? | every 10 feet ; 10 feet you fall
+How does initiative work? | roll Initiative ; rolls Initiative
+How does concentration work for spells? | Constitution saving throw
+What are the schools of magic? | Abjuration
+What does a Barbarian do? | Rage
+Which races can I choose for my character? | Dragonborn
+How does the Dodge action work? | Dodge action ; action Dodge

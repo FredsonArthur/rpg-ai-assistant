@@ -29,10 +29,21 @@ class TrechoConfereTest(unittest.TestCase):
         self.assertTrue(av.trecho_confere(trecho("A Long Rest lasts at\nleast   8 hours."), pergunta))
         self.assertTrue(av.trecho_confere(trecho("A FURIA do bárbaro"), pergunta))
 
-    def test_so_conta_palavra_inteira(self):
+    def test_o_termo_precisa_comecar_no_inicio_de_uma_palavra(self):
         pergunta = Pergunta("x", ("Rage",))
         self.assertFalse(av.trecho_confere(trecho("The average damage of a courage check"), pergunta))
         self.assertTrue(av.trecho_confere(trecho("Barbarian Rage feature"), pergunta))
+
+    def test_plurais_e_flexoes_contam(self):
+        """Caso real: o termo "two d20" não achava "you roll two d20s", do Player's Handbook."""
+        self.assertTrue(av.trecho_confere(trecho("you roll two d20s, but you use the higher"), Pergunta("x", ("two d20",))))
+        self.assertTrue(av.trecho_confere(trecho("Barbarians Rage often"), Pergunta("x", ("Rage",))))
+
+    def test_trecho_real_da_morte_pelo_inicio_da_secao(self):
+        """Caso real: o trecho certo começa a seção e não chega a "three successes"; "turn with 0 Hit Points" acerta."""
+        pergunta = next(p for p in av.PERGUNTAS_DE_EXEMPLO if "morte" in p.texto)
+        texto = "#### Death Saving Throws Whenever you start your turn with 0 Hit Points, you must make a Death Saving Throw"
+        self.assertTrue(av.trecho_confere(trecho(texto), pergunta))
 
     def test_sem_nenhum_termo_nao_confere(self):
         self.assertFalse(av.trecho_confere(trecho("Texto sem relação"), Pergunta("x", ("Grappled", "Agarrado"))))
@@ -82,6 +93,7 @@ class AvaliarTest(unittest.TestCase):
         [resultado] = av.avaliar([self.PERGUNTA], 3, buscar)
         self.assertEqual(resultado.posicao, 2)
         self.assertEqual(resultado.melhor_similaridade, 0.7)
+        self.assertEqual(resultado.trecho_acertado, trechos[1])  # o trecho que acertou, não o mais parecido
         self.assertEqual(chamadas, [("Como funciona agarrar?", 3)])
 
     def test_pergunta_sem_acerto(self):
@@ -89,6 +101,7 @@ class AvaliarTest(unittest.TestCase):
         [resultado] = av.avaliar([self.PERGUNTA], 3, lambda texto, k: trechos)
         self.assertIsNone(resultado.posicao)
         self.assertEqual(resultado.primeiro_trecho, trechos[0])
+        self.assertIsNone(resultado.trecho_acertado)
 
     def test_busca_sem_trechos(self):
         [resultado] = av.avaliar([self.PERGUNTA], 3, lambda texto, k: [])
@@ -149,6 +162,7 @@ class MainTest(BaseTeste):
         self.assertEqual(codigo, 0)
         self.assertIn(f"{total} de {total} (100%)", saida)
         self.assertIn("MRR", saida)
+        self.assertIn("[Core | Player's Handbook]", saida)  # de que livro veio cada acerto
         self.assertNotIn("PERGUNTAS SEM ACERTO", saida)
 
     def test_relatorio_mostra_o_que_falhou(self):
