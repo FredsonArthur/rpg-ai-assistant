@@ -1,0 +1,8 @@
+# Diagnóstico: o texto do Bárbaro e da concentração está no índice?
+Barbarian Rage | Rage
+Barbarian class features | Rage
+How does a Barbarian use Rage? | Rage
+What does a Barbarian do? | Barbarian
+Concentration | Constitution saving throw
+How do I maintain concentration on a spell? | Constitution saving throw
+What happens to a concentration spell when I take damage? | Constitution saving throw

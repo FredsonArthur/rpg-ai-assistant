@@ -150,3 +150,5 @@ data/chats.db
 data/chats.db-*
 data/vectordb_1500/dcdc5d6e-bd1a-4b69-ba27-8592028257b4/data_level0.bin
 data/vectordb_1500/chroma.sqlite3
+data/vectordb_500/dcdc5d6e-bd1a-4b69-ba27-8592028257b4/length.bin
+data/vectordb_500/chroma.sqlite3

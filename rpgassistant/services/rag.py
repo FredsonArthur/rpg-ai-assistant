@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 # Quantos trechos são indexados por vez (permite mostrar o progresso da indexação)
 BATCH_INDEXACAO = 256
 
+# Trechos com menos letras que isto são descartados na indexação: são restos de formatação do Markdown
+# (linhas de tabela, separadores, títulos soltos), sem conteúdo. Sem o filtro, um trecho que é só "|" chegava
+# a ser o melhor resultado de uma busca.
+MIN_LETRAS_POR_TRECHO = 20
+
 # Instâncias carregadas sob demanda e reaproveitadas entre as perguntas
 # (carregar o modelo de embeddings e abrir o Chroma a cada pergunta é lento).
 _embeddings: Optional[Any] = None
@@ -65,6 +70,17 @@ def _relatar_arquivos_lidos(documents: "List[Document]") -> None:
         logger.info("Arquivos .%s lidos: %d de %d", extensao, len(esperados) - len(faltando), len(esperados))
         for nome in faltando:
             logger.warning("Não foi possível ler: %s", nome)
+
+
+def trecho_tem_texto(documento: Any) -> bool:
+    """O trecho tem letras suficientes para valer a pena indexar? ("|", "___" e "> >" não têm.)"""
+    return sum(1 for caractere in documento.page_content if caractere.isalpha()) >= MIN_LETRAS_POR_TRECHO
+
+
+def descartar_trechos_sem_texto(trechos: List[Any]) -> Tuple[List[Any], int]:
+    """Separa os trechos que têm texto dos que são só formatação. Devolve (os que ficam, quantos foram descartados)."""
+    mantidos = [trecho for trecho in trechos if trecho_tem_texto(trecho)]
+    return mantidos, len(trechos) - len(mantidos)
 
 
 def build_vector_store() -> "Optional[Chroma]":
@@ -114,8 +130,12 @@ def build_vector_store() -> "Optional[Chroma]":
         chunk_overlap=cfg.chunk_overlap,
         separators=["\n\n", "\n", " ", ""]
     )
-    chunks = text_splitter.split_documents(documents)
-    logger.info("Total de trechos gerados: %d", len(chunks))
+    chunks, descartados = descartar_trechos_sem_texto(text_splitter.split_documents(documents))
+    logger.info("Total de trechos gerados: %d (%d descartados por não terem texto, só formatação)",
+                len(chunks), descartados)
+    if not chunks:
+        logger.warning("Nenhum trecho com texto para indexar.")
+        return None
 
     logger.info("Carregando o modelo de embeddings...")
     embeddings = get_embeddings()
